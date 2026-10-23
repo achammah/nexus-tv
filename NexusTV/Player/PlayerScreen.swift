@@ -50,8 +50,9 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
             if Metrics.on, self.ticks % 8 == 1 {      // every 2 s: where the clock is (network-cut test)
                 Metrics.shared.mark("player.clock \(self.timeMs / 1000)s bytes \(self.player.media?.statistics.readBytes ?? 0)")
             }
-            // stall watch: playing (not paused by the owner) but the clock has not moved for 6 s
-            if !self.paused, self.player.media != nil, Date().timeIntervalSince(self.lastProgress) > 6 {
+            // stall watch: the clock has not moved for 6 s while playing (not paused by the owner),
+            // or a stream has not started 15 s after it was opened (a film can take several seconds to open)
+            if !self.paused, self.player.media != nil, Date().timeIntervalSince(self.lastProgress) > (self.started ? 6 : 15) {
                 self.lastProgress = Date()
                 self.trouble += 1
             }
@@ -140,6 +141,7 @@ struct PlayerScreen: View {
     @State private var lastSave = Date.distantPast
     @State private var attempts = 0
     @State private var reconnecting = false
+    @State private var retryPending = false    // a reopen is scheduled: further trouble waits for it
     @State private var backgrounded = false
     @Environment(\.scenePhase) private var phase
     @FocusState private var rootFocus: Bool
@@ -478,17 +480,19 @@ struct PlayerScreen: View {
 
     /// The stream stopped: reopen the same URL (live: the live edge; films: the last position), 1, 2, 4, 8, 16 s apart.
     private func troubled() {
-        guard !reconnecting, !backgrounded else { return }
+        guard !retryPending, !backgrounded else { return }
         attempts += 1
         Metrics.shared.mark("player.trouble \(attempts)")
         if attempts > 5 { vlc.stop(); vlc.failed = true; reconnecting = false; return }
         reconnecting = true
+        retryPending = true
         let at = isLive ? 0 : max(vlc.timeMs, request.startMs)
         saveResume()
         vlc.stop()
         let delay = UInt64(1 << (attempts - 1))
         Task {
             try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            retryPending = false     // a reopen that fails again counts as the next attempt
             guard reconnecting, !backgrounded else { return }
             Metrics.shared.mark("player.reconnect \(attempts)")
             request.startMs = at

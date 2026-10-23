@@ -65,7 +65,7 @@ struct SettingsView: View {
             .disabled(overlay != nil)
 
             if let o = overlay {
-                Color.black.opacity(0.97).ignoresSafeArea()
+                Color.black.ignoresSafeArea()      // opaque: nothing of the Settings screen shows behind a picker
                 Group {
                     switch o {
                     case .addList: ListPicker(close: { overlay = nil })

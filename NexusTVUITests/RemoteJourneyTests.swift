@@ -105,7 +105,8 @@ final class RemoteJourneyTests: XCTestCase {
         press(.menu, wait: 3)                                  // Home
         shot("f7-home-continue")
         XCTAssertTrue(app.staticTexts["Continue watching"].exists, "Continue watching row on Home")
-        XCTAssertTrue(app.staticTexts["Belgium"].exists || app.staticTexts["New films"].exists, "Home rows drawn after the player")
+        // the row under Continue watching depends on the lists added in Settings: any live or film row counts
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label IN {'Belgium', 'New films', 'Live', 'Live now'}")).count > 0, "Home rows drawn after the player")
     }
 
     // 5 (one per series), 8 (Next episode)
