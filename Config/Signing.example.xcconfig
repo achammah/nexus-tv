@@ -1,0 +1,4 @@
+// Copy to Config/Signing.xcconfig (git-ignored) and set your Apple developer team id
+// (Xcode > Settings > Accounts > your team), or run scripts/make_signing.py to fill it from your keychain.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+CODE_SIGN_STYLE = Automatic

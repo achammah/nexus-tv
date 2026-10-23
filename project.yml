@@ -1,0 +1,75 @@
+name: NexusTV
+options:
+  bundleIdPrefix: com.nexus
+  deploymentTarget:
+    tvOS: "17.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "6"
+targets:
+  NexusTV:
+    type: application
+    platform: tvOS
+    sources:
+      - path: NexusTV
+    dependencies:
+      - framework: Vendor/TVVLCKit.xcframework
+        embed: true
+    postBuildScripts:
+      - name: No account or catalogue inside the app
+        basedOnDependencyAnalysis: false
+        script: |
+          # Earlier builds bundled a login (DefaultAccount.plist) and a catalogue file (search_all.json).
+          # An incremental build keeps resources that were removed from the project, so remove them from the product.
+          APP="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH"
+          for f in DefaultAccount.plist search_all.json; do
+            if [ -e "$APP/$f" ]; then rm "$APP/$f"; echo "warning: removed a stale $f from the app"; fi
+          done
+    scheme:
+      testTargets:
+        - NexusTVUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv
+        PRODUCT_NAME: Nexus TV
+        PRODUCT_MODULE_NAME: NexusTV
+        TARGETED_DEVICE_FAMILY: "3"
+        ASSETCATALOG_COMPILER_APPICON_NAME: App Icon & Top Shelf Image
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        INFOPLIST_FILE: NexusTV/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: NexusTV/Info.plist
+      properties:
+        CFBundleDisplayName: Nexus TV
+        CFBundleName: Nexus TV
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIImageName: LaunchLogo
+          UIColorName: LaunchBackground
+          UIImageRespectsSafeAreaInsets: true
+        UIUserInterfaceStyle: Dark
+        UIRequiredDeviceCapabilities: [arm64]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        LSRequiresIPhoneOS: false
+  NexusTVUITests:
+    type: bundle.ui-testing
+    platform: tvOS
+    sources:
+      - path: NexusTVUITests
+    dependencies:
+      - target: NexusTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: NexusTV
