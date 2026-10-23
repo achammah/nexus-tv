@@ -31,6 +31,7 @@ final class UserStore: ObservableObject {
         // test hook: -NXResetUser YES starts with empty lists
         if UserDefaults.standard.bool(forKey: "NXResetUser") {
             for k in ["nx.mylist", "nx.resume", "nx.favs"] { UserDefaults.standard.removeObject(forKey: k + suffix) }
+            UserDefaults.standard.removeObject(forKey: "nx.tracks"); trackPrefs = [:]   // remembered audio and subtitle choices
         }
         myList = loadJSON("nx.mylist" + suffix, [])
         resume = loadJSON("nx.resume" + suffix, [:])

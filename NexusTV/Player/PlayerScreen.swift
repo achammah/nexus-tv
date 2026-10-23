@@ -416,11 +416,12 @@ struct PlayerScreen: View {
                         } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: "checkmark").opacity(t.0 == current ? 1 : 0).frame(width: 26)
-                                Text(t.0 < 0 ? "Off" : Self.trackName(t.1))
+                                Text(t.0 < 0 ? "Off" : Self.label(t, in: list))
                             }
                             .frame(width: 420, alignment: .leading)
                         }
                         .buttonStyle(ChipButtonStyle(selected: t.0 == current, height: 56, font: 22))
+                        .accessibilityAddTraits(t.0 == current ? .isSelected : [])
                         .focused($trackFocus, equals: t.0)
                         .id(t.0)
                     }
@@ -440,6 +441,15 @@ struct PlayerScreen: View {
     }
 
     /// VLC names tracks like "Track 1 - [English]"; keep the language when there is one.
+    /// A track's name in the panel; two tracks with the same language get their number ("English 2").
+    static func label(_ t: (Int, String), in list: [(Int, String)]) -> String {
+        let n = trackName(t.1).trimmingCharacters(in: .whitespaces)
+        let key = { (x: (Int, String)) in trackName(x.1).trimmingCharacters(in: .whitespaces).lowercased() }
+        let same = list.filter { $0.0 >= 0 && key($0) == n.lowercased() }
+        guard same.count > 1, let i = same.firstIndex(where: { $0.0 == t.0 }) else { return n }
+        return "\(n) \(i + 1)"
+    }
+
     static func trackName(_ s: String) -> String {
         if let r = s.range(of: "\\[([^\\]]+)\\]", options: .regularExpression) { return String(s[r].dropFirst().dropLast()) }
         return s
@@ -458,7 +468,15 @@ struct PlayerScreen: View {
             vlc.setSubtitle(t.0)
             user.setTrackPref(request.item) { $0.subOff = t.0 < 0; $0.subLang = lang; $0.subPos = pos }
         }
-        Metrics.shared.mark("player.choose \(k == .audio ? "audio" : "subs")=\(lang ?? "Off")")
+        Metrics.shared.mark("player.choose \(k == .audio ? "audio" : "subs")=\(lang ?? "Off") index=\(t.0)")
+        if k == .audio {
+            // what VLC really plays a moment later, and whether the clock still moves (audio test)
+            let want = t.0, t0 = vlc.timeMs
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                Metrics.shared.mark("player.audio-now index=\(vlc.audioIndex) wanted=\(want) clock+\((vlc.timeMs - t0) / 1000)s")
+            }
+        }
     }
 
     /// Reapplies the saved choice when a film or any episode of the series starts; subtitles are off by default.
@@ -475,7 +493,7 @@ struct PlayerScreen: View {
         else if let s = pick(vlc.subtitleTracks, lang: p?.subLang, pos: p?.subPos) { vlc.setSubtitle(s) }
         let an = vlc.audioTracks.first { $0.0 == vlc.audioIndex }.map { Self.trackName($0.1) } ?? "-"
         let sn = vlc.subtitleIndex < 0 ? "Off" : (vlc.subtitleTracks.first { $0.0 == vlc.subtitleIndex }.map { Self.trackName($0.1) } ?? "-")
-        Metrics.shared.mark("player.tracks \(request.item.name) audio=\(an) subs=\(sn)")
+        Metrics.shared.mark("player.tracks \(request.item.name) audio=\(an) subs=\(sn) audioTracks=\(vlc.audioTracks.count)")
     }
 
     /// The stream stopped: reopen the same URL (live: the live edge; films: the last position), 1, 2, 4, 8, 16 s apart.
