@@ -9,7 +9,10 @@ mkdir -p shots/remote
 : "${NXTV_ACCOUNT_FILE:?set NXTV_ACCOUNT_FILE to a 3-line file: server, username, password}"
 { read -r S; read -r U; read -r P; } < "$NXTV_ACCOUNT_FILE"
 export TEST_RUNNER_NX_SERVER="$S" TEST_RUNNER_NX_USER="$U" TEST_RUNNER_NX_PASS="$P"
+rm -rf build/uitest.xcresult                # a run that was stopped leaves its bundle behind
 TEST_RUNNER_SHOTS_DIR="$PWD/shots/remote" xcodebuild test -project NexusTV.xcodeproj -scheme NexusTV -destination "id=$UDID" \
   -derivedDataPath build/dd -resultBundlePath build/uitest.xcresult "$@" > build/uitest-raw.log 2>&1
+EC=$?
 python3 -I scripts/safe_log.py build/uitest-raw.log
 rm -rf build/uitest.xcresult build/uitest-raw.log
+exit $EC                                    # the test result is the script's result

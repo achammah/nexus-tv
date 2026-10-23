@@ -36,7 +36,9 @@ struct RootView: View {
             // first search index after sign-in: a small line, nothing waits for it
             if let p = catalog.indexProgress, !catalog.needsAccount {
                 HStack(spacing: 12) { ProgressView().scaleEffect(0.6); Text(p).font(.ui(20)) }
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.black))   // solid: readable over tiles
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, Theme.x0).padding(.bottom, 40)
                     .allowsHitTesting(false)
