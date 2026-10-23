@@ -6,6 +6,8 @@ struct RootView: View {
     @EnvironmentObject var catalog: Catalog
     @EnvironmentObject var user: UserStore
     @FocusState private var menuFocus: TabID?
+    @Namespace private var rootScope
+    @Environment(\.resetFocus) private var resetFocus
     @ObservedObject private var toaster = Toaster.shared
     @ObservedObject private var chrome = Chrome.shared
     @State private var visited: Set<TabID> = []
@@ -50,6 +52,7 @@ struct RootView: View {
             }
         }
         .frame(width: 1920, height: 1080)
+        .focusScope(rootScope)
         .ignoresSafeArea()
         .animation(.easeOut(duration: 0.3), value: toaster.text)
         .onChange(of: nav.tab, initial: true) { _, t in visited.insert(t); Metrics.shared.mark("tab:" + t.rawValue) }
@@ -66,7 +69,13 @@ struct RootView: View {
             guard let f, nav.detail.isEmpty else { return }
             if old == nil && f != nav.tab { menuFocus = nav.tab } else { nav.tab = f }
         }
-        .onChange(of: nav.focusMenuTick) { _, _ in menuFocus = nav.tab }
+        // a plain assignment is refused while focus is deep in a scrolled screen; a focus reset to the
+        // scope's preferred item (the current tab) is not
+        .onChange(of: nav.focusMenuTick) { _, _ in
+            // the header must be drawn before it can take focus; the black band under it stays (chrome.scrolled)
+            chrome.headerHidden = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { menuFocus = nav.tab; resetFocus(in: rootScope) }
+        }
         .onExitCommand(perform: exitAction)
         .fullScreenCover(item: $nav.playing) { req in
             PlayerScreen(request: req).environmentObject(catalog).environmentObject(user)
@@ -77,13 +86,10 @@ struct RootView: View {
     private var exitAction: (() -> Void)? {
         if nav.movingRow != nil { return { nav.stopMoving() } }
         if !nav.detail.isEmpty { return { nav.detail.removeLast() } }
-        // the header may be hidden (scrolled Home): show it first, then focus it on the next turn of the run loop
-        if menuFocus == nil {
-            return {
-                if chrome.headerHidden { chrome.headerHidden = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { menuFocus = nav.tab } }
-                else { menuFocus = nav.tab }
-            }
-        }
+        // Menu from the content goes up to the tab bar. A plain focus assignment is refused while focus is deep
+        // in a scrolled screen, so this resets focus to the scope's preferred item, the current tab. On a scrolled
+        // Home the header shows because the menu has focus; the black band under it stays (headerHidden stays set).
+        if menuFocus == nil { return { nav.focusMenuTick += 1 } }
         if nav.tab != .home { return { nav.tab = .home; menuFocus = .home } }
         return nil
     }
@@ -120,11 +126,15 @@ struct RootView: View {
             .padding(.top, 62)
 
             if nav.detail.isEmpty {
-                menu.padding(.top, 58)
+                // a full-width band: Up from anywhere below (a tile on the far left or right) lands in the menu
+                HStack(spacing: 0) { Spacer(minLength: 0); menu; Spacer(minLength: 0) }
+                    .frame(maxWidth: .infinity)
+                    .focusSection()
+                    .padding(.top, 58)
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .opacity(headerVisible ? 1 : 0)
+        .opacity(headerVisible ? 1 : 0.001)   // not 0: a fully transparent header drops out of the accessibility tree and stays out
         .animation(.easeOut(duration: 0.15), value: headerVisible)
     }
 
@@ -143,6 +153,8 @@ struct RootView: View {
                 .buttonStyle(ChipButtonStyle(selected: t == nav.tab, height: 44, radius: 22, font: 23, hPad: t == .settings ? 14 : 24,
                                              onFill: Color.white.opacity(0.16), dim: 0.62))
                 .focused($menuFocus, equals: t)
+                .prefersDefaultFocus(t == nav.tab, in: rootScope)
+                .accessibilityLabel(t.label)      // the Settings tab is an icon: VoiceOver says "Settings", not the symbol name
             }
         }
         .padding(6)

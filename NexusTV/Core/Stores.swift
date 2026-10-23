@@ -147,7 +147,9 @@ final class Toaster: ObservableObject {
 final class Chrome: ObservableObject {
     static let shared = Chrome()
     /// Home: header and menu hide while rows pass under them.
-    @Published var headerHidden = false
+    @Published var headerHidden = false { didSet { if headerHidden { scrolled = true } } }
+    /// Home is scrolled below its first row: a black band covers the rows under the header (also while the menu has focus).
+    @Published var scrolled = false
 }
 
 // MARK: - Settings

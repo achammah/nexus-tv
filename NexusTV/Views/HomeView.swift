@@ -43,7 +43,7 @@ struct HomeView: View {
             }
 
             // solid mask: rows never show under the header area once scrolled
-            Color.black.frame(height: 150).opacity(chrome.headerHidden ? 1 : 0).allowsHitTesting(false)
+            Color.black.frame(height: 150).opacity(chrome.scrolled ? 1 : 0).allowsHitTesting(false)
         }
         .onReceive(rotate) { _ in
             guard catalog.hero.count > 1, !chrome.headerHidden, nav.playing == nil, nav.movingRow == nil, heroButton == nil else { return }
@@ -98,8 +98,12 @@ struct HomeView: View {
                 .onMoveCommand { d in
                     if d == .left && heroButton == 0 { stepHero(-1) }
                     if d == .right && heroButton == 1 { stepHero(1) }
+                    // this handler takes the move from the focus engine: Up must be sent to the menu by hand
+                    if d == .right && heroButton == 0 { heroButton = 1 }
+                    if d == .left && heroButton == 1 { heroButton = 0 }
+                    if d == .up { nav.focusMenuTick += 1 }
                 }
-                .onChange(of: heroButton) { _, f in if f != nil { chrome.headerHidden = false } }
+                .onChange(of: heroButton) { _, f in if f != nil { chrome.headerHidden = false; chrome.scrolled = false } }
                 .padding(.leading, Theme.x0)
                 .frame(width: 1920, alignment: .leading)   // full-width band: moving down from the menu lands here
                 .focusSection()
@@ -313,7 +317,7 @@ struct ShelfTile: View {
             .offset(y: moving ? -6 : 0)
             .modifier(Jiggle(on: moving, seed: index))
             .focused($focused)
-            .onChange(of: focused) { _, f in if f, nav.tab == .home, Chrome.shared.headerHidden == isFirstRow { Chrome.shared.headerHidden = !isFirstRow } }
+            .onChange(of: focused) { _, f in if f, nav.tab == .home, Chrome.shared.headerHidden == isFirstRow { Chrome.shared.headerHidden = !isFirstRow; if isFirstRow { Chrome.shared.scrolled = false } } }
             .contextMenu { if tile.allChannels == nil { menu } }
             if shape == .logo {
                 HStack(spacing: 10) {

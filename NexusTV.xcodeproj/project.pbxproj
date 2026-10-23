@@ -32,6 +32,7 @@
 		CE447345BA29CF4834B74863 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69AD0CEADB7A0D3818FF724C /* Models.swift */; };
 		E8D048AACCF95BB82BC6EE12 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC8B298A3FABDFCD399787E /* LibraryView.swift */; };
 		ED4825C7467E31C07E1B28AE /* PlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3924751B98BAF0C798B9B2DC /* PlayerScreen.swift */; };
+		F4EE040F9571C62CDF508A21 /* NavAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B808F55BEF372EDC590E5931 /* NavAuditTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -83,6 +84,7 @@
 		89D0CCB0E7209DBE949E37B9 /* GuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideView.swift; sourceTree = "<group>"; };
 		9C2277DA1CD405B5B4F9B9CA /* AAOnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AAOnboardingTests.swift; sourceTree = "<group>"; };
 		A01D4E5EFDAB6407D56A2A5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B808F55BEF372EDC590E5931 /* NavAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavAuditTests.swift; sourceTree = "<group>"; };
 		C9F45329B337EE21EEFD4DE9 /* RemoteJourneyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteJourneyTests.swift; sourceTree = "<group>"; };
 		CB14543641987908D9B0A310 /* PerfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfTests.swift; sourceTree = "<group>"; };
 		CFC3F01017108B30A928ADFC /* NexusTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusTVApp.swift; sourceTree = "<group>"; };
@@ -192,6 +194,7 @@
 				9C2277DA1CD405B5B4F9B9CA /* AAOnboardingTests.swift */,
 				633D7441E859F61D521E7109 /* Build4Tests.swift */,
 				56688A08CE700AF7EC7F47EF /* Idle.swift */,
+				B808F55BEF372EDC590E5931 /* NavAuditTests.swift */,
 				CB14543641987908D9B0A310 /* PerfTests.swift */,
 				C9F45329B337EE21EEFD4DE9 /* RemoteJourneyTests.swift */,
 				56AC4984B2E0A5834CEFCE34 /* SearchFocusTests.swift */,
@@ -324,6 +327,7 @@
 				646280ACF5AFB70801F9C217 /* AAOnboardingTests.swift in Sources */,
 				6B83963976A7BC67B5253F00 /* Build4Tests.swift in Sources */,
 				210FFA051C8ED438260D8C06 /* Idle.swift in Sources */,
+				F4EE040F9571C62CDF508A21 /* NavAuditTests.swift in Sources */,
 				6E037A0B6238F9CB451AB62A /* PerfTests.swift in Sources */,
 				6120C3FDD710ECF2DBCB9713 /* RemoteJourneyTests.swift in Sources */,
 				27E1FF156D47B4F05E08EA10 /* SearchFocusTests.swift in Sources */,
@@ -399,7 +403,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -523,7 +527,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
