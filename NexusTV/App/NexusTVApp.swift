@@ -11,6 +11,8 @@ struct NexusTVApp: App {
         #if DEBUG
         // test hook: -NXResetAccounts YES starts like a new install (no account: the onboarding screen)
         if UserDefaults.standard.bool(forKey: "NXResetAccounts") { AccountVault.removeAll() }
+        // test hook: -NXClearCache YES starts with no cached lists (the search index is prepared again)
+        if UserDefaults.standard.bool(forKey: "NXClearCache") { DiskCache.clear() }
         #endif
         Metrics.shared.start()
     }
