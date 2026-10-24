@@ -31,8 +31,9 @@ enum OpeningSpec {
     static let nCards = 10
     static let offset: Double = 3.5, swing: Double = 24
     static let fps: Double = 30
-    /// Home cross-fades in from here; the whole opening lasts `duration`.
-    static let homeAt: Double = 1.8, duration: Double = 3
+    /// The whole opening lasts `duration`; it holds on black for `hold`, then Home fades in over `fadeOut`.
+    static let duration: Double = 3, hold: Double = 0.3, fadeOut: Double = 0.5
+    static var homeAt: Double { duration + hold }
     static let markPaths: [String] = [
         "M0 69.855L0.000167052 209.566L120.954 279.421L120.954 176.948C120.954 153.905 108.665 132.613 88.7154 121.092L0 69.855Z",
         "M164.313 77.4323C184.262 88.9537 196.551 110.246 196.551 133.289L196.551 183.37L241.909 209.566L241.909 107.093C241.909 84.0505 229.62 62.758 209.67 51.2365L120.955 9.45148e-06L120.955 52.3915L164.313 77.4323Z",
@@ -307,7 +308,7 @@ enum OpeningGate {
 }
 
 /// The launch overlay: the opening over a Home that loads underneath (a ready Home is never held back). Home
-/// cross-fades in from 1.8 s; any press, click or key skips. `onFinish` removes the overlay.
+/// fades in after the animation ends and holds on black; any press, click or key skips. `onFinish` removes the overlay.
 struct OpeningOverlay: View {
     let onFinish: () -> Void
     @State private var shown = 1.0
@@ -329,11 +330,11 @@ struct OpeningOverlay: View {
             #endif
             .task {
                 guard frozen == nil else { return }
+                // the animation plays to its end, holds on black, then black fades to Home
                 try? await Task.sleep(nanoseconds: UInt64(OpeningSpec.homeAt * 1e9))
                 guard !done else { return }
-                let fade = OpeningSpec.duration - OpeningSpec.homeAt
-                withAnimation(.easeInOut(duration: fade)) { shown = 0 }
-                try? await Task.sleep(nanoseconds: UInt64(fade * 1e9))
+                withAnimation(.easeInOut(duration: OpeningSpec.fadeOut)) { shown = 0 }
+                try? await Task.sleep(nanoseconds: UInt64(OpeningSpec.fadeOut * 1e9))
                 finish()
             }
             #if os(macOS)

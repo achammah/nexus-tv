@@ -39,7 +39,7 @@ struct PinnedBanner: View {
                         let i = row * 8 + col
                         RoundedRectangle(cornerRadius: 8 * k, style: .continuous).fill(Color.white.opacity(0.07))
                             .overlay {
-                                if i < entry.logos.count { ArtImage(url: Img.url(entry.logos[i], .poster), fill: false).padding(8 * k) }
+                                if i < entry.logos.count { MosaicLogo(tile: entry.logos[i]).padding(8 * k) }
                             }
                     }
                 }

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import NaturalLanguage
 #if os(tvOS)
 import TVVLCKit
 #else
@@ -52,6 +53,7 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     private var resolving: UUID?
 
     private func open(_ url: URL, startMs: Int, live: Bool) {
+        detectedLang = [:]
         self.live = live
         failed = false; ended = false; started = false; loadPct = 0; timeMs = startMs; lengthMs = 0; paused = false
         lastProgress = Date(); lastTime = -1
@@ -102,7 +104,77 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
 
     // Audio and subtitle tracks, as (index, name)
     var audioTracks: [(Int, String)] { zip(player.audioTrackIndexes as? [NSNumber] ?? [], player.audioTrackNames as? [String] ?? []).map { ($0.intValue, $1) }.filter { $0.0 >= 0 } }
-    var subtitleTracks: [(Int, String)] { zip(player.videoSubTitlesIndexes as? [NSNumber] ?? [], player.videoSubTitlesNames as? [String] ?? []).map { ($0.intValue, $1) } }
+    /// Subtitle tracks named by language: a generic name ("Subtitles 1", "Track 2", "und") becomes the language
+    /// from the file's own tag, or the language read from the subtitle text (online files).
+    var subtitleTracks: [(Int, String)] {
+        zip(player.videoSubTitlesIndexes as? [NSNumber] ?? [], player.videoSubTitlesNames as? [String] ?? []).map { ($0.intValue, subtitleName($0.intValue, $1)) }
+    }
+    /// Languages read from added subtitle files, by track index.
+    private var detectedLang: [Int: String] = [:]
+
+    func subtitleName(_ id: Int, _ raw: String) -> String {
+        guard id >= 0 else { return raw }
+        let inner = Self.trackName(raw).trimmingCharacters(in: .whitespaces)
+        if let named = Self.languageName(inner) { return named }        // "eng", "fr", "English"
+        guard Self.isGeneric(inner) else { return raw }
+        if let d = detectedLang[id] { return d }
+        if let tag = trackLanguage(id), let named = Self.languageName(tag) { return named }
+        return raw
+    }
+
+    /// "Subtitles 1", "Subtitle 2", "Track 3", "Piste 1", "Sub", "Unknown", "und", "": no language in the name.
+    static func isGeneric(_ s: String) -> Bool {
+        s.isEmpty || s.range(of: "^(sub(title)?s?|sous-titres?|track|piste|text|unknown|undetermined|und|default|stream|spu)?[\\s#._-]*\\d*$",
+                             options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// An ISO 639 code or a language name, as an English language name ("fre" and "fr" -> "French"); nil otherwise.
+    private static var nameCache: [String: String?] = [:]
+    static func languageName(_ s: String) -> String? {
+        if let c = nameCache[s] { return c }
+        let r = resolveLanguage(s); nameCache[s] = r; return r
+    }
+    private static func resolveLanguage(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !t.isEmpty, t != "und", t != "unknown" else { return nil }
+        let en = Locale(identifier: "en")
+        let bib = ["fre": "fr", "ger": "de", "dut": "nl", "chi": "zh", "cze": "cs", "gre": "el", "per": "fa", "rum": "ro", "slo": "sk", "alb": "sq", "arm": "hy", "baq": "eu", "bur": "my", "geo": "ka", "ice": "is", "mac": "mk", "mao": "mi", "may": "ms", "wel": "cy", "tib": "bo"]
+        if t.count <= 3, t.allSatisfy(\.isLetter) {
+            let code = bib[t] ?? t
+            if let n = en.localizedString(forLanguageCode: code), n.lowercased() != code { return n.capitalized(with: en) }
+            return nil
+        }
+        // already a language name ("English", "français"): normalise it to English
+        for code in Locale.LanguageCode.isoLanguageCodes.map(\.identifier) where code.count == 2 {
+            if let n = en.localizedString(forLanguageCode: code), n.lowercased() == t { return n }
+            if let own = Locale(identifier: code).localizedString(forLanguageCode: code), own.lowercased() == t, let n = en.localizedString(forLanguageCode: code) { return n }
+        }
+        return nil
+    }
+
+    /// The language tag of a text track in the file, when VLC reads one.
+    private func trackLanguage(_ id: Int) -> String? {
+        for t in player.media?.tracksInformation as? [[String: Any]] ?? [] where (t[VLCMediaTracksInformationType] as? String) == VLCMediaTracksInformationTypeText {
+            guard (t[VLCMediaTracksInformationId] as? NSNumber)?.intValue == id else { continue }
+            if let l = t[VLCMediaTracksInformationLanguage] as? String, !l.isEmpty { return l }
+            if let d = t[VLCMediaTracksInformationDescription] as? String, Self.languageName(d) != nil { return d }
+        }
+        return nil
+    }
+
+    /// The language of a subtitle file's text (SRT / VTT / ASS), from its dialogue lines.
+    static func detectLanguage(_ url: URL) -> String? {
+        guard let d = try? Data(contentsOf: url) else { return nil }
+        let text = String(decoding: d.prefix(200_000), as: UTF8.self)
+        let lines = text.split(whereSeparator: \.isNewline).filter { l in
+            !l.contains("-->") && !l.allSatisfy { $0.isNumber || $0.isWhitespace } && !l.hasPrefix("WEBVTT") && !l.hasPrefix("[")
+        }.map { $0.replacingOccurrences(of: "<[^>]+>|\\{[^}]*\\}", with: "", options: .regularExpression) }
+        let sample = lines.prefix(400).joined(separator: " ")
+        guard sample.count > 40 else { return nil }
+        let r = NLLanguageRecognizer(); r.processString(sample)
+        guard let lang = r.dominantLanguage, (r.languageHypotheses(withMaximum: 1)[lang] ?? 0) > 0.5 else { return nil }
+        return Locale(identifier: "en").localizedString(forLanguageCode: lang.rawValue)
+    }
     var audioIndex: Int { Int(player.currentAudioTrackIndex) }
     var subtitleIndex: Int { Int(player.currentVideoSubTitleIndex) }
     func setAudio(_ i: Int) { player.currentAudioTrackIndex = Int32(i) }
@@ -124,10 +196,11 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     /// A subtitle file from outside (OpenSubtitles): added to the playing media and selected. Returns its track index.
     func addSubtitleFile(_ url: URL) async -> Int? {
         let before = Set(subtitleTracks.map(\.0))
+        let lang = url.isFileURL ? await Task.detached { Self.detectLanguage(url) }.value : nil
         player.addPlaybackSlave(url, type: .subtitle, enforce: true)
         for _ in 0..<20 {                         // the new track appears in the list a moment later
             try? await Task.sleep(nanoseconds: 150_000_000)
-            if let n = subtitleTracks.map(\.0).first(where: { !before.contains($0) }) { setSubtitle(n); return n }
+            if let n = subtitleTracks.map(\.0).first(where: { !before.contains($0) }) { if let lang { detectedLang[n] = lang }; setSubtitle(n); return n }
         }
         return nil
     }

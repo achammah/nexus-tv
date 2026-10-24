@@ -235,7 +235,7 @@ enum BannerModels {
 
 
 /// One logo of a banner mosaic: "name\u{1F}icon", resolved like a channel tile; nothing found leaves the tile plain.
-private struct MosaicLogo: View {
+struct MosaicLogo: View {
     let tile: String
     var body: some View {
         let parts = tile.split(separator: "\u{1F}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)

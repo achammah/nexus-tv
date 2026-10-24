@@ -19,7 +19,7 @@ struct OnboardingView: View {
                     .task {
                         guard OpeningGate.frozenFrame == nil else { return }
                         try? await Task.sleep(nanoseconds: UInt64(OpeningSpec.homeAt * 1e9))
-                        withAnimation(.easeInOut(duration: OpeningSpec.duration - OpeningSpec.homeAt)) { form = true }
+                        withAnimation(.easeInOut(duration: OpeningSpec.fadeOut)) { form = true }
                     }
             }
             OnboardingScreen(model: model, skipLabel: addMode ? "Cancel" : "Skip for now", addMode: addMode, skip: skip, submit: submit)

@@ -104,12 +104,20 @@ struct LiveDirectory {
         }
         func logos(_ cc: String) -> [String] {
             guard codes.contains(cc), !catalog.liveIndex.isEmpty else { return [] }
-            var out: [String] = []
+            // "name\u{1F}icon" per tile, resolved like the channel grid (own icon, twin, bundled map, iptv-org), so a
+            // dead provider logo server no longer leaves the tiles empty; channels with an icon or a known logo first
+            var out: [String] = [], seen = Set<String>(), rest: [String] = []
             for g in catalog.liveGroups(cc) {
-                for ch in catalog.liveIndex[g.id] ?? [] where !ch.icon.isEmpty && out.count < 16 && !out.contains(ch.icon) { out.append(ch.icon) }
+                for ch in catalog.liveIndex[g.id] ?? [] {
+                    let key = LogoName.parse(ch.name).key
+                    guard !key.isEmpty, seen.insert(key).inserted else { continue }
+                    let t = ch.name + "\u{1F}" + ch.icon
+                    if !ch.icon.isEmpty || ChannelLogos.shared.bundledURL(forKey: key) != nil { out.append(t) } else { rest.append(t) }
+                    if out.count >= 16 { break }
+                }
                 if out.count >= 16 { break }
             }
-            return out
+            return Array((out + rest).prefix(16))
         }
         func entry(_ cc: String) -> LiveEntry {
             LiveEntry(code: cc, name: CountryNames.name(cc), asset: CountryNames.flagAsset(cc), color: CountryNames.flagColor(cc), logos: logos(cc), groups: groupCount[cc] ?? 0, channels: channels(cc))
