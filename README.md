@@ -54,18 +54,12 @@ switched in Settings.
 - Audio and subtitle choice remembered per film and per series
 - Online subtitles from your own OpenSubtitles account, matched to the exact file so they are in sync
 - Auto reconnect when a stream drops
-- Opening animation at launch
 
 </td>
   </tr>
 </table>
 
 ## A closer look
-
-<p align="center">
-  <img src="docs/opening.gif" alt="Opening animation" width="70%"><br>
-  <sub><b>The opening</b>: ten glass cards fan into the mark, every launch, on Apple TV and on the Mac.</sub>
-</p>
 
 <table>
   <tr>
