@@ -79,6 +79,20 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     var subtitleIndex: Int { Int(player.currentVideoSubTitleIndex) }
     func setAudio(_ i: Int) { player.currentAudioTrackIndex = Int32(i) }
     func setSubtitle(_ i: Int) { player.currentVideoSubTitleIndex = Int32(i) }
+    /// The file's frame rate (0 when VLC does not say).
+    var fps: Double {
+        for t in player.media?.tracksInformation as? [[String: Any]] ?? [] where (t[VLCMediaTracksInformationType] as? String) == VLCMediaTracksInformationTypeVideo {
+            let n = (t[VLCMediaTracksInformationFrameRate] as? NSNumber)?.doubleValue ?? 0, d = (t[VLCMediaTracksInformationFrameRateDenominator] as? NSNumber)?.doubleValue ?? 0
+            if n > 0 && d > 0 { return n / d }
+        }
+        return 0
+    }
+    /// Subtitle timing offset in milliseconds (positive: later).
+    var subtitleDelayMs: Int {
+        get { player.currentVideoSubTitleDelay / 1000 }
+        set { player.currentVideoSubTitleDelay = newValue * 1000 }
+    }
+
     /// A subtitle file from outside (OpenSubtitles): added to the playing media and selected. Returns its track index.
     func addSubtitleFile(_ url: URL) async -> Int? {
         let before = Set(subtitleTracks.map(\.0))
@@ -162,6 +176,7 @@ struct PlayerScreen: View {
     @State private var onlineActive: Int? = nil   // file id
     @State private var onlineTrack: Int? = nil    // its subtitle track index
     @State private var onlineFiles: [Int: URL] = [:]
+    @State private var delayTick = 0              // redraws the timing line after Earlier / Later
 
     @State private var infoVisible = true
     @State private var hideTask: Task<Void, Never>?
@@ -458,11 +473,22 @@ struct PlayerScreen: View {
 
     @ViewBuilder
     private func onlineSection(on: Bool) -> some View {
+        let _ = delayTick
         Text("Online · OpenSubtitles").font(.ui(20, .semibold)).foregroundStyle(.white.opacity(0.55)).padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 4)
         if onlineState == "loading" || onlineState.isEmpty {
             Text("Searching…").font(.ui(20)).foregroundStyle(.white.opacity(0.5)).padding(.horizontal, 18)
         } else if onlineState != "done" {
             Text(onlineState).font(.ui(20)).foregroundStyle(.white.opacity(0.5)).padding(.horizontal, 18).frame(width: 440, alignment: .leading)
+        }
+        if on, let fid = onlineActive {
+            HStack(spacing: 10) {
+                Button { shiftDelay(fid, -500) } label: { Text("Earlier −0.5 s").frame(width: 190) }
+                    .focused($trackFocus, equals: 99_998)
+                Button { shiftDelay(fid, 500) } label: { Text("Later +0.5 s").frame(width: 190) }
+                    .focused($trackFocus, equals: 99_999)
+            }
+            .buttonStyle(ChipButtonStyle(height: 52, font: 20))
+            Text("Timing \(String(format: "%+.1f", Double(vlc.subtitleDelayMs) / 1000)) s").font(.ui(18)).foregroundStyle(.white.opacity(0.5)).padding(.horizontal, 18)
         }
         ForEach(Array(online.enumerated()), id: \.element.fileId) { i, r in
             let sel = on && onlineActive == r.fileId
@@ -502,7 +528,11 @@ struct PlayerScreen: View {
         onlineFor = key; onlineState = "loading"; online = []
         guard let q = await onlineQuery() else { if onlineFor == key { onlineState = "This title has no TMDb id: no online search." }; return }
         do {
-            let r = try await osub.search(q, languages: OpenSubtitles.languages(settingsLanguages))
+            // the exact-file hash (two small range reads of this stream) and the frame rate rank the results
+            let hash = catalog.url(request.item).map { u in Task { await osub.fileHash(u) } }
+            let h = await hash?.value ?? ""
+            let r = try await osub.search(q, languages: OpenSubtitles.languages(settingsLanguages), hash: h, fps: vlc.fps)
+            Metrics.shared.mark("player.osub hash=\(h.isEmpty ? "none" : "ok") fps=\(String(format: "%.3f", vlc.fps)) exact=\(r.filter(\.exact).count)")
             guard onlineFor == key else { return }
             online = r; onlineState = r.isEmpty ? "No online subtitles in your languages." : "done"
             Metrics.shared.mark("player.osub results=\(r.count)")
@@ -510,6 +540,17 @@ struct PlayerScreen: View {
             if onlineFor == key { onlineState = "Online search failed (\(error.localizedDescription))." }
         }
     }
+    /// Manual timing for an online subtitle, kept per subtitle file.
+    private func shiftDelay(_ fid: Int, _ ms: Int) {
+        vlc.subtitleDelayMs += ms
+        var all = UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int] ?? [:]
+        all[String(fid)] = vlc.subtitleDelayMs
+        UserDefaults.standard.set(all, forKey: "nx.subDelay")
+        delayTick += 1
+        Metrics.shared.mark("player.osub delay=\(vlc.subtitleDelayMs)")
+    }
+    static func savedDelay(_ fid: Int) -> Int { (UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int])?[String(fid)] ?? 0 }
+
     private var settingsLanguages: [String] { (UserDefaults.standard.data(forKey: "nx.languages").flatMap { try? JSONDecoder().decode([String].self, from: $0) }) ?? Settings.defaultLanguages }
 
     /// Downloads (once per file and playback) and shows an online subtitle; with `remember`, the series or film keeps it.
@@ -519,8 +560,9 @@ struct PlayerScreen: View {
             if let f = onlineFiles[r.fileId] { url = f } else { url = try await osub.download(r); onlineFiles[r.fileId] = url }
             guard let n = await vlc.addSubtitleFile(url) else { user.show("Online subtitles could not be shown"); return }
             onlineActive = r.fileId; onlineTrack = n
+            vlc.subtitleDelayMs = Self.savedDelay(r.fileId)
             if remember { user.setTrackPref(request.item) { $0.subOff = false; $0.subOnline = r.lang; $0.subLang = nil; $0.subPos = nil } }
-            Metrics.shared.mark("player.osub added lang=\(r.lang) track=\(n)")
+            Metrics.shared.mark("player.osub added lang=\(r.lang) track=\(n) exact=\(r.exact) q=\(r.quality) delay=\(vlc.subtitleDelayMs)")
         } catch {
             user.show("Online subtitles failed (\(error.localizedDescription))")
         }

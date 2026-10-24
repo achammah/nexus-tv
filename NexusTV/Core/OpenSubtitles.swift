@@ -9,6 +9,13 @@ struct OSAccount: Codable, Equatable { var key: String, user: String, pass: Stri
 
 struct OSResult: Identifiable, Hashable, Sendable {
     let fileId: Int, lang: String, release: String, downloads: Int, hearingImpaired: Bool, trusted: Bool
+    var fps: Double = 0
+    var exact = false          // OpenSubtitles says it was made for this very file (moviehash match)
+    /// Quality points: a frame rate given (+1), a named release (web, blu-ray, hdtv, a streaming service: +2), a trusted uploader (+1).
+    var quality: Int {
+        let named = release.range(of: "web|blu-?ray|bdrip|brrip|hdtv|amzn|\\bnf\\b|dsnp|hmax|atvp", options: [.regularExpression, .caseInsensitive]) != nil
+        return (fps > 0 ? 1 : 0) + (named ? 2 : 0) + (trusted ? 1 : 0)
+    }
     var id: Int { fileId }
 }
 
@@ -68,13 +75,16 @@ final class OpenSubtitles: ObservableObject {
 
     /// The best subtitle per language, languages in the owner's order: same language first, then not for the
     /// hearing impaired, trusted uploaders, most downloaded. Machine or AI translations and multi-part files are left out.
-    func search(_ q: OSQuery, languages: [String]) async throws -> [OSResult] {
+    /// Ranked: language (owner's order), exact-file match, same frame rate as the file, quality points, not for the
+    /// hearing impaired, most downloaded. One per language, the best one.
+    func search(_ q: OSQuery, languages: [String], hash: String? = nil, fps: Double = 0) async throws -> [OSResult] {
         guard let a = account else { throw Failure.noAccount }
         var p: [String]
         switch q {
         case .film(let t): p = ["tmdb_id=\(t)"]
         case .episode(let t, let s, let e): p = ["parent_tmdb_id=\(t)", "season_number=\(s)", "episode_number=\(e)"]
         }
+        if let hash, !hash.isEmpty { p.append("moviehash=" + hash) }
         p.append("languages=" + languages.sorted().joined(separator: ","))
         p.append("order_by=download_count")
         let d = try await Self.request(a.key, "GET", "https://api.opensubtitles.com/api/v1/subtitles?" + p.joined(separator: "&"), body: nil, bearer: nil)
@@ -83,15 +93,21 @@ final class OpenSubtitles: ObservableObject {
             let at = r["attributes"] as? [String: Any] ?? [:]
             guard let f = (at["files"] as? [[String: Any]])?.first, let id = f["file_id"] as? Int,
                   (at["machine_translated"] as? Bool) != true, (at["ai_translated"] as? Bool) != true, ((at["nb_cd"] as? Int) ?? 1) <= 1 else { continue }
-            out.append(OSResult(fileId: id, lang: (at["language"] as? String) ?? "", release: (at["release"] as? String) ?? (f["file_name"] as? String) ?? "",
-                                downloads: (at["download_count"] as? Int) ?? 0, hearingImpaired: (at["hearing_impaired"] as? Bool) ?? false,
-                                trusted: (at["from_trusted"] as? Bool) ?? false))
+            var r = OSResult(fileId: id, lang: (at["language"] as? String) ?? "", release: (at["release"] as? String) ?? (f["file_name"] as? String) ?? "",
+                             downloads: (at["download_count"] as? Int) ?? 0, hearingImpaired: (at["hearing_impaired"] as? Bool) ?? false,
+                             trusted: (at["from_trusted"] as? Bool) ?? false)
+            r.fps = (at["fps"] as? Double) ?? Double((at["fps"] as? String) ?? "") ?? 0
+            r.exact = (at["moviehash_match"] as? Bool) ?? false
+            out.append(r)
         }
+        func sameFps(_ r: OSResult) -> Bool { fps > 0 && r.fps > 0 && abs(r.fps - fps) < 0.05 }
         out.sort { x, y in
             let lx = languages.firstIndex(of: x.lang) ?? 99, ly = languages.firstIndex(of: y.lang) ?? 99
             if lx != ly { return lx < ly }
+            if x.exact != y.exact { return x.exact }
+            if sameFps(x) != sameFps(y) { return sameFps(x) }
+            if x.quality != y.quality { return x.quality > y.quality }
             if x.hearingImpaired != y.hearingImpaired { return !x.hearingImpaired }
-            if x.trusted != y.trusted { return x.trusted }
             return x.downloads > y.downloads
         }
         var seen = Set<String>()
@@ -128,6 +144,35 @@ final class OpenSubtitles: ObservableObject {
             throw Failure.http(h.statusCode, msg)
         }
         return j
+    }
+
+    // MARK: file hash
+
+    private var hashes: [URL: String] = [:]
+    /// OpenSubtitles file hash: the size plus the 64-bit sum (little-endian words) of the first and last 64 KB,
+    /// read with two Range requests. "" when the server does not allow ranges.
+    func fileHash(_ url: URL) async -> String {
+        if let h = hashes[url] { return h }
+        let c = 65_536
+        func chunk(_ range: String) async -> (Data, String?)? {
+            var r = URLRequest(url: url, timeoutInterval: 15)
+            r.setValue("bytes=" + range, forHTTPHeaderField: "Range")
+            r.setValue("Mozilla/5.0 (AppleTV) NexusTV/1.0", forHTTPHeaderField: "User-Agent")
+            guard let (d, resp) = try? await URLSession.shared.data(for: r), let h = resp as? HTTPURLResponse, h.statusCode == 206 else { return nil }
+            return (d, h.value(forHTTPHeaderField: "Content-Range"))
+        }
+        guard let (head, cr) = await chunk("0-\(c - 1)"), let size = cr.flatMap({ UInt64($0.split(separator: "/").last ?? "") }), size > UInt64(c * 2),
+              let (tail, _) = await chunk("\(size - UInt64(c))-\(size - 1)") else { hashes[url] = ""; return "" }
+        var h = size
+        for d in [head, tail] {
+            d.withUnsafeBytes { raw in
+                var i = 0
+                while i + 8 <= raw.count { h = h &+ UInt64(littleEndian: raw.loadUnaligned(fromByteOffset: i, as: UInt64.self)); i += 8 }
+            }
+        }
+        let out = String(format: "%016llx", h)
+        hashes[url] = out
+        return out
     }
 
     // MARK: Keychain
