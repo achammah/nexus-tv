@@ -93,7 +93,7 @@ line shows the progress; Home and browsing never wait for it. The index refreshe
 
 ## Build and run
 
-You need a Mac with **Xcode 16 or later** and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+You need a Mac with **Xcode 26 or later** (the Mac icon needs it) and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```bash
 brew install xcodegen
