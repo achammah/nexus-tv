@@ -128,6 +128,7 @@ struct TrackPref: Codable {
     var subLang: String? = nil
     var subPos: Int? = nil
     var subOff: Bool? = nil
+    var subOnline: String? = nil    // the owner picked OpenSubtitles in this language: the next episode fetches its best match
 }
 
 /// Short messages at the bottom of the screen. Kept apart from UserStore so a toast never redraws the tiles.

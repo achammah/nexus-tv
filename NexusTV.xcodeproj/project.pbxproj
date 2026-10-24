@@ -10,11 +10,13 @@
 		0966E584CDFFD0228FD68748 /* Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47AEBE1EF7F445E31EB04D95 /* Metrics.swift */; };
 		10199D2FB014667D4FD9FE7F /* TVVLCKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 66529BBEBF69F183711D44D4 /* TVVLCKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		1C22BEC03C82E39D503FD295 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28E91838662914F9328DD96A /* RootView.swift */; };
+		1C67D1897C7B2D015B67E389 /* OpenSubtitles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0686FC37EDA6D744635502AB /* OpenSubtitles.swift */; };
 		210FFA051C8ED438260D8C06 /* Idle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56688A08CE700AF7EC7F47EF /* Idle.swift */; };
 		27E1FF156D47B4F05E08EA10 /* SearchFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56AC4984B2E0A5834CEFCE34 /* SearchFocusTests.swift */; };
 		30AEBD835F10ECD5B2435CD3 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548F3E7AA30478910E686544 /* Components.swift */; };
 		3456879EF1F69FE71F25D3C4 /* AudioTrackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C861D53EFCF3F157B652081E /* AudioTrackTests.swift */; };
 		4E53EE7EAD5A472496024517 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 224344077ADB876268C6680A /* Assets.xcassets */; };
+		598416FDE087FC1C90DC845A /* OSubTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978DDB54C62EF4AC7E686EF8 /* OSubTests.swift */; };
 		6120C3FDD710ECF2DBCB9713 /* RemoteJourneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F45329B337EE21EEFD4DE9 /* RemoteJourneyTests.swift */; };
 		646280ACF5AFB70801F9C217 /* AAOnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2277DA1CD405B5B4F9B9CA /* AAOnboardingTests.swift */; };
 		6AC4B9C2696C5BA897CB75EE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750062A59512493DEF343B9E /* SettingsView.swift */; };
@@ -62,6 +64,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0686FC37EDA6D744635502AB /* OpenSubtitles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSubtitles.swift; sourceTree = "<group>"; };
 		110072F6CF287DD789046D7C /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		224344077ADB876268C6680A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		28E91838662914F9328DD96A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -85,6 +88,7 @@
 		750062A59512493DEF343B9E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		82D84175B4FD22BF4D67BC45 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
 		89D0CCB0E7209DBE949E37B9 /* GuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideView.swift; sourceTree = "<group>"; };
+		978DDB54C62EF4AC7E686EF8 /* OSubTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OSubTests.swift; sourceTree = "<group>"; };
 		9C2277DA1CD405B5B4F9B9CA /* AAOnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AAOnboardingTests.swift; sourceTree = "<group>"; };
 		A01D4E5EFDAB6407D56A2A5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B808F55BEF372EDC590E5931 /* NavAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavAuditTests.swift; sourceTree = "<group>"; };
@@ -141,6 +145,7 @@
 				82D84175B4FD22BF4D67BC45 /* Catalog.swift */,
 				47AEBE1EF7F445E31EB04D95 /* Metrics.swift */,
 				69AD0CEADB7A0D3818FF724C /* Models.swift */,
+				0686FC37EDA6D744635502AB /* OpenSubtitles.swift */,
 				2D1BB3207FEA658E1D29B876 /* Stores.swift */,
 			);
 			path = Core;
@@ -200,6 +205,7 @@
 				633D7441E859F61D521E7109 /* Build4Tests.swift */,
 				56688A08CE700AF7EC7F47EF /* Idle.swift */,
 				B808F55BEF372EDC590E5931 /* NavAuditTests.swift */,
+				978DDB54C62EF4AC7E686EF8 /* OSubTests.swift */,
 				CB14543641987908D9B0A310 /* PerfTests.swift */,
 				2956217BE574C89EFC7E18E5 /* PlayerParityTests.swift */,
 				C9F45329B337EE21EEFD4DE9 /* RemoteJourneyTests.swift */,
@@ -335,6 +341,7 @@
 				6B83963976A7BC67B5253F00 /* Build4Tests.swift in Sources */,
 				210FFA051C8ED438260D8C06 /* Idle.swift in Sources */,
 				F4EE040F9571C62CDF508A21 /* NavAuditTests.swift in Sources */,
+				598416FDE087FC1C90DC845A /* OSubTests.swift in Sources */,
 				6E037A0B6238F9CB451AB62A /* PerfTests.swift in Sources */,
 				C1ECBD4B5098FEBDA19F8B18 /* PlayerParityTests.swift in Sources */,
 				6120C3FDD710ECF2DBCB9713 /* RemoteJourneyTests.swift in Sources */,
@@ -357,6 +364,7 @@
 				CE447345BA29CF4834B74863 /* Models.swift in Sources */,
 				7DFD44F6C5899D9E3D09348F /* NexusTVApp.swift in Sources */,
 				B33C8462AA4A78FF5B3E0A1C /* OnboardingView.swift in Sources */,
+				1C67D1897C7B2D015B67E389 /* OpenSubtitles.swift in Sources */,
 				ED4825C7467E31C07E1B28AE /* PlayerScreen.swift in Sources */,
 				1C22BEC03C82E39D503FD295 /* RootView.swift in Sources */,
 				749167951D04B9249BE56BC7 /* SearchView.swift in Sources */,

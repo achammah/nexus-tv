@@ -4,12 +4,12 @@ import SwiftUI
 struct SettingsView: View {
     enum Section: String, CaseIterable, Identifiable {
         case menu = "Menu tabs", rows = "Home rows", countries = "Live TV countries", languages = "Film & series languages",
-             lists = "Lists", channels = "Channels", accounts = "Accounts", clear = "Clear lists"
+             lists = "Lists", channels = "Channels", subtitles = "Subtitles", accounts = "Accounts", clear = "Clear lists"
         var id: String { rawValue }
         var icon: String {
             switch self {
             case .menu: "menubar.rectangle"; case .rows: "rectangle.stack"; case .countries: "globe.europe.africa"
-            case .languages: "character.bubble"; case .lists: "list.bullet.rectangle"; case .channels: "star.circle"; case .accounts: "person.2.circle"
+            case .languages: "character.bubble"; case .lists: "list.bullet.rectangle"; case .channels: "star.circle"; case .subtitles: "captions.bubble"; case .accounts: "person.2.circle"
             case .clear: "clock.arrow.circlepath"
             }
         }
@@ -19,7 +19,7 @@ struct SettingsView: View {
     @State private var overlay: Overlay? = nil
     @FocusState private var side: Section?
     @State private var returnTo: Section = .menu
-    enum Overlay { case addList, addAccount, channels }
+    enum Overlay { case addList, addAccount, channels, osub }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -51,6 +51,7 @@ struct SettingsView: View {
                         case .languages: LanguagesPane()
                         case .lists: ListsPane(add: { overlay = .addList })
                         case .channels: ChannelsPane(browse: { overlay = .channels })
+                        case .subtitles: SubtitlesPane(edit: { overlay = .osub })
                         case .accounts: AccountsPane(add: { overlay = .addAccount })
                         case .clear: ClearPane()
                         }
@@ -71,6 +72,7 @@ struct SettingsView: View {
                     case .addList: ListPicker(close: { overlay = nil })
                     case .addAccount: AccountForm(close: { overlay = nil }) { catalog.addAccount($0) }
                     case .channels: ChannelPicker(close: { overlay = nil })
+                    case .osub: OSubForm(close: { overlay = nil })
                     }
                 }
                 .onExitCommand { overlay = nil }
@@ -558,6 +560,70 @@ struct AccountForm: View {
                                   server: a.base, username: username, password: password))
         busy = false
         close?()
+    }
+}
+
+// MARK: - Subtitles: the owner's OpenSubtitles account (online subtitles in the CC menu)
+
+private struct SubtitlesPane: View {
+    let edit: () -> Void
+    @ObservedObject private var osub = OpenSubtitles.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PaneTitle(title: "Subtitles", note: "With an OpenSubtitles account, the CC menu also lists online subtitles in your languages. Searching is free; each subtitle you pick uses one download.")
+            if let a = osub.account {
+                Text("Signed in as \(a.user)" + (osub.left.map { " · \($0) downloads left today" } ?? ""))
+                    .font(.ui(24, .semibold)).padding(.bottom, 8)
+                HStack(spacing: 16) {
+                    Button("Change account", action: edit).buttonStyle(PillButtonStyle())
+                    Button("Sign out") { osub.signOut() }.buttonStyle(PillButtonStyle())
+                }
+            } else {
+                Text("No OpenSubtitles account.").font(.ui(22)).foregroundStyle(.white.opacity(0.55)).padding(.bottom, 8)
+                Button(action: edit) { Label("Add an OpenSubtitles account", systemImage: "plus") }.buttonStyle(PillButtonStyle())
+            }
+        }
+    }
+}
+
+private struct OSubForm: View {
+    let close: () -> Void
+    @State private var key = ""
+    @State private var user = ""
+    @State private var pass = ""
+    @State private var status = "Your API key is on opensubtitles.com › Profile › API consumers. The login is checked before it is saved."
+    @State private var busy = false
+    @FocusState private var first: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("OpenSubtitles account").font(.ui(40, .bold)).padding(.bottom, 10)
+            field("API key") { SecureField("API key", text: $key).focused($first) }
+            field("Username") { TextField("Username", text: $user).textContentType(.username) }
+            field("Password") { SecureField("Password", text: $pass).textContentType(.password) }
+            HStack(spacing: 18) {
+                Button("Check and save") { Task { await save() } }.buttonStyle(PillButtonStyle()).disabled(busy)
+                Button("Cancel", action: close).buttonStyle(PillButtonStyle())
+            }
+            .padding(.top, 10)
+            Text(status).font(.ui(22)).foregroundStyle(.white.opacity(0.7)).frame(width: 1124, alignment: .leading)
+        }
+        .padding(.leading, 160).padding(.top, 150)
+        .frame(width: 1920, height: 1080, alignment: .topLeading)
+        .focusSection()
+        .onAppear { first = true }
+    }
+    private func field<F: View>(_ label: String, @ViewBuilder _ f: () -> F) -> some View {
+        HStack(spacing: 24) {
+            Text(label).font(.ui(24, .semibold)).frame(width: 200, alignment: .leading)
+            f().font(.ui(24)).frame(width: 900)
+        }
+    }
+    private func save() async {
+        let a = OSAccount(key: key.trimmingCharacters(in: .whitespaces), user: user.trimmingCharacters(in: .whitespaces), pass: pass)
+        guard !a.key.isEmpty, !a.user.isEmpty, !a.pass.isEmpty else { status = "API key, username and password are all needed."; return }
+        busy = true; status = "Checking the login…"
+        do { try await OpenSubtitles.shared.signIn(a); busy = false; close() }
+        catch { status = "OpenSubtitles refused this login (\(error.localizedDescription))."; busy = false }
     }
 }
 

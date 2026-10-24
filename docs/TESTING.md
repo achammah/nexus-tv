@@ -31,3 +31,14 @@ UI tests use `idle()` (a run-loop wait) instead of `sleep()`: a blocking sleep o
 | No account in the app | the post-build phase "No account or catalogue inside the app" in project.yml | every build | an incremental build would keep files removed from the project; the phase deletes `DefaultAccount.plist` and `search_all.json` from the product and warns |
 
 Captures that show a typed login go to `build/private-*.png`, never to `shots/`.
+
+## Build 9: player parity and online subtitles
+
+| Type | File | Runner | What fails it |
+|---|---|---|---|
+| Player parity | NexusTVUITests/PlayerParityTests.swift | `scripts/uitest.sh` | text on the control bar; Next episode not reached by Up or not above the bar; no next-episode card 40 s before the end, no countdown, Select or Menu wrong, card shown twice; resumed episode without Next episode; audio menu without formats; remembered audio not current on replay |
+| Audio switch | NexusTVUITests/AudioTrackTests.swift | `scripts/uitest.sh` | the picked track is not the current one when the menu reopens, or the clock stops |
+| Online subtitles | NexusTVUITests/OSubTests.swift | `OSUB_ACCOUNT_FILE=<file> scripts/uitest.sh` | sign-in not shown; no online results in the CC menu; a pick not marked current; the next episode without the remembered online subtitle |
+| Navigation | NexusTVUITests/NavAuditTests.swift, SearchFocusTests.swift | `scripts/uitest.sh` | Up from any tile does not reach the tab bar; Menu from content does not; Up from search results does not reach the keyboard |
+
+`OSUB_ACCOUNT_FILE` holds an OpenSubtitles test account on 3 lines (API key, username, password), kept outside the repo; the log masker hides its values. Each run of OSubTests uses about two downloads.

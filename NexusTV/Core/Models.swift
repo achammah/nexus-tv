@@ -122,6 +122,7 @@ struct Details {
     var plot = ""
     var backdrop = ""
     var ext = ""
+    var tmdb = ""                   // TMDb id (films: the film; series: the series), for online subtitles
     var seasons: [String] = []
     var episodes: [String: [Episode]] = [:]
 }

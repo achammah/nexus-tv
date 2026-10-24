@@ -9,6 +9,11 @@ mkdir -p shots/remote
 : "${NXTV_ACCOUNT_FILE:?set NXTV_ACCOUNT_FILE to a 3-line file: server, username, password}"
 { read -r S; read -r U; read -r P; } < "$NXTV_ACCOUNT_FILE"
 export TEST_RUNNER_NX_SERVER="$S" TEST_RUNNER_NX_USER="$U" TEST_RUNNER_NX_PASS="$P"
+# optional: an OpenSubtitles test account (OSUB_ACCOUNT_FILE, 3 lines: API key, username, password)
+if [ -n "${OSUB_ACCOUNT_FILE:-}" ]; then
+  { read -r OK; read -r OU; read -r OP; } < "$OSUB_ACCOUNT_FILE"
+  export TEST_RUNNER_NX_OS_KEY="$OK" TEST_RUNNER_NX_OS_USER="$OU" TEST_RUNNER_NX_OS_PASS="$OP"
+fi
 rm -rf build/uitest.xcresult                # a run that was stopped leaves its bundle behind
 TEST_RUNNER_SHOTS_DIR="$PWD/shots/remote" xcodebuild test -project NexusTV.xcodeproj -scheme NexusTV -destination "id=$UDID" \
   -derivedDataPath build/dd -resultBundlePath build/uitest.xcresult "$@" > build/uitest-raw.log 2>&1

@@ -13,6 +13,8 @@ struct NexusTVApp: App {
         if UserDefaults.standard.bool(forKey: "NXResetAccounts") { AccountVault.removeAll() }
         // test hook: -NXClearCache YES starts with no cached lists (the search index is prepared again)
         if UserDefaults.standard.bool(forKey: "NXClearCache") { DiskCache.clear() }
+        // test hook: -NXResetOSub YES starts with no OpenSubtitles account
+        if UserDefaults.standard.bool(forKey: "NXResetOSub") { OpenSubtitles.resetForTests() }
         #endif
         Metrics.shared.start()
     }

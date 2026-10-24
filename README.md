@@ -56,6 +56,7 @@ Keychain. Nothing is sent anywhere else.
 | 🎬 **Films and series** | Categories by language, detail pages, seasons and episodes, next episode plays by itself. A **CC** badge shows titles known to have subtitles. |
 | 🔎 **Search** | Apple's own search screen: keyboard, dictation, typing from an iPhone. Your languages and countries first, then everything else with a small language badge. |
 | ▶️ **Player** | VLCKit, live and on demand. Audio and subtitle choice remembered per film and per series. Live scrubbing shows the real frame. One stream at a time; it reconnects by itself after a network drop and stops when the app goes to the background. |
+| 💬 **Online subtitles** | Optional, with your own OpenSubtitles account (**Settings › Subtitles**: API key, username, password, kept in the Keychain). The CC menu then also lists online subtitles in your languages; a pick uses one download, and for a series the next episode takes the same language by itself. |
 | ⚙️ **Settings** | Menu tabs and Home rows (show, hide, reorder), countries, languages, **Lists** (any category of your account as a Home row), **Channels** (star any channel), **Accounts** (add, switch, remove), clear lists. |
 
 After an account is added, the app downloads the full catalogue in the background to build its search index. A small

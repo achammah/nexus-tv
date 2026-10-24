@@ -453,6 +453,7 @@ final class Catalog: ObservableObject {
         let backs = (info["backdrop_path"] as? [Any])?.compactMap { $0 as? String } ?? []
         out.backdrop = backs.first ?? [s(info, "cover_big"), s(info, "movie_image"), s(info, "cover"), it.img].first { !$0.isEmpty } ?? ""
         if isFilm, let md = d["movie_data"] as? [String: Any] { out.ext = s(md, "container_extension") }
+        out.tmdb = [s(info, "tmdb_id"), s(info, "tmdb")].first { !$0.isEmpty && $0 != "0" } ?? ""
         if !isFilm {
             var eps: [String: [Episode]] = [:]
             func parse(_ arr: [Any], season fallback: String) {

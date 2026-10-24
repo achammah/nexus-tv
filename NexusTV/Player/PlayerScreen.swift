@@ -79,6 +79,16 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     var subtitleIndex: Int { Int(player.currentVideoSubTitleIndex) }
     func setAudio(_ i: Int) { player.currentAudioTrackIndex = Int32(i) }
     func setSubtitle(_ i: Int) { player.currentVideoSubTitleIndex = Int32(i) }
+    /// A subtitle file from outside (OpenSubtitles): added to the playing media and selected. Returns its track index.
+    func addSubtitleFile(_ url: URL) async -> Int? {
+        let before = Set(subtitleTracks.map(\.0))
+        player.addPlaybackSlave(url, type: .subtitle, enforce: true)
+        for _ in 0..<20 {                         // the new track appears in the list a moment later
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if let n = subtitleTracks.map(\.0).first(where: { !before.contains($0) }) { setSubtitle(n); return n }
+        }
+        return nil
+    }
 
     /// The audio format of a track ("AC3", "AAC"…), from the file's track list; nil when VLC does not say.
     func audioFormat(_ id: Int) -> String? {
@@ -144,6 +154,14 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vlc = VLCController()
     @ObservedObject private var toaster = Toaster.shared
+    @ObservedObject private var osub = OpenSubtitles.shared
+    // online subtitles for this item: results, state, the one playing (its track index in VLC) and downloaded files
+    @State private var online: [OSResult] = []
+    @State private var onlineState = ""           // "" not searched, "loading", "done", or an error message
+    @State private var onlineFor = ""
+    @State private var onlineActive: Int? = nil   // file id
+    @State private var onlineTrack: Int? = nil    // its subtitle track index
+    @State private var onlineFiles: [Int: URL] = [:]
 
     @State private var infoVisible = true
     @State private var hideTask: Task<Void, Never>?
@@ -429,15 +447,89 @@ struct PlayerScreen: View {
 
     private func openPicker(_ k: TrackKind) {
         let list = k == .audio ? vlc.audioTracks : vlc.subtitleTracks
-        if list.isEmpty || (k == .audio && list.count < 2) {
+        if (list.isEmpty && !(k == .subtitles && osub.ready)) || (k == .audio && list.count < 2) {
             user.show(k == .audio ? "Only one audio track" : "No subtitles in this file"); return
         }
         picker = k
+        if k == .subtitles && osub.ready && onlineFor != request.item.key { Task { await loadOnline() } }
+    }
+
+    // MARK: online subtitles (OpenSubtitles)
+
+    @ViewBuilder
+    private func onlineSection(on: Bool) -> some View {
+        Text("Online · OpenSubtitles").font(.ui(20, .semibold)).foregroundStyle(.white.opacity(0.55)).padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 4)
+        if onlineState == "loading" || onlineState.isEmpty {
+            Text("Searching…").font(.ui(20)).foregroundStyle(.white.opacity(0.5)).padding(.horizontal, 18)
+        } else if onlineState != "done" {
+            Text(onlineState).font(.ui(20)).foregroundStyle(.white.opacity(0.5)).padding(.horizontal, 18).frame(width: 440, alignment: .leading)
+        }
+        ForEach(Array(online.enumerated()), id: \.element.fileId) { i, r in
+            let sel = on && onlineActive == r.fileId
+            Button {
+                picker = nil; controlFocus = "subs"
+                Task { await pickOnline(r, remember: true) }
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "checkmark").opacity(sel ? 1 : 0).frame(width: 26)
+                    Text(OpenSubtitles.languageName(r.lang) + " · online")
+                }
+                .frame(width: 420, alignment: .leading)
+            }
+            .buttonStyle(ChipButtonStyle(selected: sel, height: 56, font: 22))
+            .accessibilityAddTraits(sel ? .isSelected : [])
+            .focused($trackFocus, equals: 100_000 + i)
+            .id(100_000 + i)
+        }
+    }
+
+    /// What to search for this item: the film's TMDb id, or the series' TMDb id with season and episode numbers.
+    private func onlineQuery() async -> OSQuery? {
+        let it = request.item
+        if it.kind == .film {
+            guard let d = await catalog.details(it), !d.tmdb.isEmpty else { return nil }
+            return .film(tmdb: d.tmdb)
+        }
+        guard it.kind == .episode, let sid = it.seriesId,
+              let m = it.name.range(of: "S(\\d+) E(\\d+)$", options: .regularExpression) else { return nil }
+        let nums = it.name[m].dropFirst().split(separator: " ").map { Int($0.filter(\.isNumber)) ?? 0 }
+        guard nums.count == 2, let d = await catalog.details(MediaItem(kind: .series, id: sid, name: it.seriesName ?? "")), !d.tmdb.isEmpty else { return nil }
+        return .episode(seriesTmdb: d.tmdb, season: nums[0], episode: nums[1])
+    }
+
+    private func loadOnline() async {
+        let key = request.item.key
+        onlineFor = key; onlineState = "loading"; online = []
+        guard let q = await onlineQuery() else { if onlineFor == key { onlineState = "This title has no TMDb id: no online search." }; return }
+        do {
+            let r = try await osub.search(q, languages: OpenSubtitles.languages(settingsLanguages))
+            guard onlineFor == key else { return }
+            online = r; onlineState = r.isEmpty ? "No online subtitles in your languages." : "done"
+            Metrics.shared.mark("player.osub results=\(r.count)")
+        } catch {
+            if onlineFor == key { onlineState = "Online search failed (\(error.localizedDescription))." }
+        }
+    }
+    private var settingsLanguages: [String] { (UserDefaults.standard.data(forKey: "nx.languages").flatMap { try? JSONDecoder().decode([String].self, from: $0) }) ?? Settings.defaultLanguages }
+
+    /// Downloads (once per file and playback) and shows an online subtitle; with `remember`, the series or film keeps it.
+    private func pickOnline(_ r: OSResult, remember: Bool) async {
+        do {
+            let url: URL
+            if let f = onlineFiles[r.fileId] { url = f } else { url = try await osub.download(r); onlineFiles[r.fileId] = url }
+            guard let n = await vlc.addSubtitleFile(url) else { user.show("Online subtitles could not be shown"); return }
+            onlineActive = r.fileId; onlineTrack = n
+            if remember { user.setTrackPref(request.item) { $0.subOff = false; $0.subOnline = r.lang; $0.subLang = nil; $0.subPos = nil } }
+            Metrics.shared.mark("player.osub added lang=\(r.lang) track=\(n)")
+        } catch {
+            user.show("Online subtitles failed (\(error.localizedDescription))")
+        }
     }
 
     private func trackPanel(_ k: TrackKind) -> some View {
-        let list = k == .audio ? vlc.audioTracks : vlc.subtitleTracks
+        let list = k == .audio ? vlc.audioTracks : vlc.subtitleTracks.filter { $0.0 != onlineTrack }
         let current = k == .audio ? vlc.audioIndex : vlc.subtitleIndex
+        let onlineOn = k == .subtitles && onlineTrack != nil && current == onlineTrack
         return VStack(alignment: .leading, spacing: 6) {
             Text(k == .audio ? "Audio" : "Subtitles").font(.ui(26, .bold)).padding(.horizontal, 18).padding(.bottom, 8)
             ScrollViewReader { proxy in
@@ -459,11 +551,15 @@ struct PlayerScreen: View {
                         .focused($trackFocus, equals: t.0)
                         .id(t.0)
                     }
+                    if k == .subtitles && osub.ready { onlineSection(on: onlineOn) }
                 }
                 .padding(4)
             }
             .frame(maxHeight: 520)
-            .onAppear { proxy.scrollTo(current, anchor: .center); trackFocus = current }   // opens on the current track, in view
+            .onAppear {      // opens on the current track, in view
+                let f = onlineOn ? (online.firstIndex { $0.fileId == onlineActive }.map { 100_000 + $0 } ?? current) : current
+                proxy.scrollTo(f, anchor: .center); trackFocus = f
+            }
             }
         }
         .padding(24)
@@ -508,7 +604,7 @@ struct PlayerScreen: View {
             user.setTrackPref(request.item) { $0.audioLang = lang; $0.audioPos = pos }
         } else {
             vlc.setSubtitle(t.0)
-            user.setTrackPref(request.item) { $0.subOff = t.0 < 0; $0.subLang = lang; $0.subPos = pos }
+            user.setTrackPref(request.item) { $0.subOff = t.0 < 0; $0.subLang = lang; $0.subPos = pos; $0.subOnline = nil }
         }
         Metrics.shared.mark("player.choose \(k == .audio ? "audio" : "subs")=\(lang ?? "Off") index=\(t.0)")
         if k == .audio {
@@ -546,7 +642,12 @@ struct PlayerScreen: View {
                 Metrics.shared.mark("player.audio-pref index=\(vlc.audioIndex) wanted=\(a)")
             }
         }
-        if p?.subOff ?? true { vlc.setSubtitle(-1) }
+        if let lang = p?.subOnline, osub.ready {
+            Task {
+                if onlineFor != request.item.key || online.isEmpty { await loadOnline() }
+                if let r = online.first(where: { $0.lang == lang }) { await pickOnline(r, remember: false); Metrics.shared.mark("player.osub auto lang=\(lang)") }
+            }
+        } else if p?.subOff ?? true { vlc.setSubtitle(-1) }
         else if let s = pick(vlc.subtitleTracks, lang: p?.subLang, pos: p?.subPos) { vlc.setSubtitle(s) }
         let an = vlc.audioTracks.first { $0.0 == vlc.audioIndex }.map { Self.trackName($0.1) } ?? "-"
         let sn = vlc.subtitleIndex < 0 ? "Off" : (vlc.subtitleTracks.first { $0.0 == vlc.subtitleIndex }.map { Self.trackName($0.1) } ?? "-")
@@ -578,6 +679,8 @@ struct PlayerScreen: View {
     private func start(again: Bool = false) {
         guard let url = catalog.url(request.item) else { vlc.failed = true; return }
         if !again { attempts = 0; reconnecting = false; upDone = false }
+        if onlineFor != request.item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] }
+        else { onlineTrack = nil }      // a reopened stream: the remembered choice adds the file again
         vlc.play(url, startMs: request.startMs, live: isLive)
         if !isLive { user.setResume(request.item, posMs: request.startMs, durMs: 0) }   // in Continue watching from the start
         lastSave = Date()
