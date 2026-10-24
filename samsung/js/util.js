@@ -204,10 +204,21 @@ var U = (function () {
     // Audio and subtitle choice per film or series (a series' choice covers every episode).
     var trackPrefs = load('nx_tracks', {});
     function prefKey(it) { return it ? (it.series ? 'series:' + it.series.id : it.k + ':' + it.id) : ''; }
-    function getTrackPref(it) { return trackPrefs[prefKey(it)] || null; }
+    // A title's own choice first; a title never set uses the last language picked anywhere (by language only,
+    // since track positions differ from file to file).
+    function getTrackPref(it) {
+        var own = trackPrefs[prefKey(it)] || null, last = trackPrefs['*'] || null;
+        if (!last) return own;
+        var out = {}; for (var k in (own || {})) out[k] = own[k];
+        if (!out.audio && last.audio && last.audio.lang) out.audio = { lang: last.audio.lang, pos: -1 };
+        if (!out.subs && last.subs) out.subs = last.subs.online || last.subs.off ? last.subs : (last.subs.lang ? { lang: last.subs.lang, pos: -1 } : null);
+        return out;
+    }
     function setTrackPref(it, kind, val) {
         var k = prefKey(it); if (!k) return;
-        var p = trackPrefs[k] || {}; p[kind] = val; trackPrefs[k] = p; save('nx_tracks', trackPrefs);
+        var p = trackPrefs[k] || {}; p[kind] = val; trackPrefs[k] = p;
+        var g = trackPrefs['*'] || {}; g[kind] = val; trackPrefs['*'] = g;
+        save('nx_tracks', trackPrefs);
     }
     var resume = load('nx_resume', {});
     function setResume(it, pos, dur) {

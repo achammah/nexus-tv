@@ -117,8 +117,14 @@ final class OpenSubtitles: ObservableObject {
     /// One download (counts toward the daily quota): the SRT is saved to a temporary file for the player.
     func download(_ r: OSResult) async throws -> URL {
         guard let a = account else { throw Failure.noAccount }
-        let t = try await validToken()
-        let d = try await Self.request(a.key, "POST", "https://\(t.base)/api/v1/download", body: ["file_id": r.fileId, "sub_format": "srt"], bearer: t.value)
+        var t = try await validToken()
+        let d: [String: Any]
+        do { d = try await Self.request(a.key, "POST", "https://\(t.base)/api/v1/download", body: ["file_id": r.fileId, "sub_format": "srt"], bearer: t.value) }
+        catch Failure.http(let code, _) where code == 401 {
+            // the pass was cancelled (signed in again on another device, or expired early): sign in once more
+            token = nil; t = try await validToken()
+            d = try await Self.request(a.key, "POST", "https://\(t.base)/api/v1/download", body: ["file_id": r.fileId, "sub_format": "srt"], bearer: t.value)
+        }
         guard let link = (d["link"] as? String).flatMap(URL.init(string:)) else { throw Failure.noLink }
         if let rem = d["remaining"] as? Int { left = rem }
         let (data, resp) = try await URLSession.shared.data(from: link)

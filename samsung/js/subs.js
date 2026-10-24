@@ -86,10 +86,13 @@ var Subs = (function () {
             });
         });
     }
-    function download(fileId, cb) {
+    // A sign-in pass OpenSubtitles has cancelled (signed in again elsewhere, or expired early) answers 401
+    // "invalid token": sign in once more and retry.
+    function download(fileId, cb, again) {
         login(function (e) {
             if (e) { cb(e); return; }
             req('POST', '/download', { file_id: fileId, sub_format: 'srt' }, true, function (e2, d) {
+                if (e2 && !again && (e2.status === 401 || /token/i.test(e2.message || ''))) { tok = null; save('nx_osub_tok', null); download(fileId, cb, true); return; }
                 if (e2 || !d || !d.link) { cb(e2 || { message: 'No link' }); return; }
                 if (tok) { tok.left = d.remaining; save('nx_osub_tok', tok); }
                 var x = new XMLHttpRequest(); x.open('GET', d.link, true); x.timeout = 20000;

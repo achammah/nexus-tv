@@ -1,24 +1,24 @@
 import SwiftUI
 
-/// Settings: menu tabs, Home rows, Live TV countries, film/series languages, Lists, Accounts, clearing lists.
+/// Settings, laid out like the Mac Settings page: Live countries, Film and series languages, Online subtitles (OpenSubtitles),
+/// then Sources (Mac: Settings › Sources). Apple TV only settings sit in the closest Mac section:
+/// Channels and Home rows and Lists under Live countries, Menu tabs and the catalogue refresh under Film and series languages,
+/// Clear lists under Sources.
 struct SettingsView: View {
     enum Section: String, CaseIterable, Identifiable {
-        case menu = "Menu tabs", rows = "Home rows", countries = "Live countries", languages = "Film & series languages",
-             lists = "Lists", channels = "Channels", subtitles = "Subtitles", accounts = "Sources", clear = "Clear lists"
+        case countries = "Live countries", languages = "Film and series languages", subtitles = "Online subtitles (OpenSubtitles)", accounts = "Sources"
         var id: String { rawValue }
         var icon: String {
             switch self {
-            case .menu: "menubar.rectangle"; case .rows: "rectangle.stack"; case .countries: "globe.europe.africa"
-            case .languages: "character.bubble"; case .lists: "list.bullet.rectangle"; case .channels: "star.circle"; case .subtitles: "captions.bubble"; case .accounts: "link.circle"
-            case .clear: "clock.arrow.circlepath"
+            case .countries: "globe.europe.africa"; case .languages: "character.bubble"; case .subtitles: "captions.bubble"; case .accounts: "link.circle"
             }
         }
     }
     @EnvironmentObject var catalog: Catalog
-    @State private var section: Section = .menu
+    @State private var section: Section = .countries
     @State private var overlay: Overlay? = nil
     @FocusState private var side: Section?
-    @State private var returnTo: Section = .menu
+    @State private var returnTo: Section = .countries
     enum Overlay { case addList, channels, osub }
 
     var body: some View {
@@ -43,17 +43,21 @@ struct SettingsView: View {
                 .focusSection()
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    Group {
+                    VStack(alignment: .leading, spacing: 44) {
                         switch section {
-                        case .menu: OrderPane(kind: .tabs)
-                        case .rows: OrderPane(kind: .rows)
-                        case .countries: CountriesPane()
-                        case .languages: LanguagesPane()
-                        case .lists: ListsPane(add: { overlay = .addList })
-                        case .channels: ChannelsPane(browse: { overlay = .channels })
+                        case .countries:
+                            CountriesPane()
+                            ChannelsPane(browse: { overlay = .channels })
+                            OrderPane(kind: .rows)
+                            ListsPane(add: { overlay = .addList })
+                        case .languages:
+                            LanguagesPane()
+                            OrderPane(kind: .tabs)
+                            CataloguePane()
                         case .subtitles: SubtitlesPane(edit: { overlay = .osub })
-                        case .accounts: AccountsPane(add: { catalog.addingSource = true })
-                        case .clear: ClearPane()
+                        case .accounts:
+                            AccountsPane(add: { catalog.addingSource = true })
+                            ClearPane()
                         }
                     }
                     .padding(40)
@@ -99,6 +103,18 @@ struct PaneTitle: View {
     }
 }
 
+/// A block inside a section: a smaller title than the section name, for settings the Mac does not have.
+struct BlockTitle: View {
+    let title: String, note: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.ui(30, .semibold))
+            Text(note).font(.ui(20)).foregroundStyle(.white.opacity(0.55))
+        }
+        .padding(.bottom, 14)
+    }
+}
+
 // MARK: - Menu tabs and Home rows: click shows/hides; "Edit order" (or long press) moves them
 
 private struct OrderPane: View {
@@ -109,7 +125,7 @@ private struct OrderPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PaneTitle(title: kind == .tabs ? "Menu tabs" : "Home rows",
+            BlockTitle(title: kind == .tabs ? "Menu tabs" : "Home rows",
                       note: editing ? "Use the arrows to move. Done finishes." :
                         (kind == .tabs ? "Click shows or hides a tab. Settings always stays at the end." : "Click shows or hides a row. Lists you add appear here too."))
             HStack(spacing: 16) {
@@ -220,7 +236,7 @@ private struct LanguagesPane: View {
     @EnvironmentObject var catalog: Catalog
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PaneTitle(title: "Film & series languages", note: "Category groups shown in Films, Series and search. Untagged groups are Netflix, Disney+, Apple+, Top IMDB…")
+            PaneTitle(title: "Film and series languages", note: "Category groups shown in Films, Series and search. Untagged groups are Netflix, Disney+, Apple+, Top IMDB…")
             ChipGrid(items: tags.map { (id: $0.0, label: Languages.name($0.0), sub: "\($0.1)") },
                      isOn: { settings.languages.contains($0) },
                      toggle: { t in
@@ -250,7 +266,7 @@ private struct ListsPane: View {
     @EnvironmentObject var settings: Settings
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PaneTitle(title: "Lists", note: "Add any category of your account (live, films or series) as a row on Home.")
+            BlockTitle(title: "Lists", note: "Add any category of your account (live, films or series) as a row on Home.")
             Button(action: add) { Label("Browse all lists", systemImage: "plus") }.buttonStyle(PillButtonStyle()).padding(.bottom, 12)
             if settings.lists.isEmpty {
                 Text("No lists yet.").font(.ui(22)).foregroundStyle(.white.opacity(0.5))
@@ -349,7 +365,7 @@ private struct ChannelsPane: View {
     @EnvironmentObject var settings: Settings
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PaneTitle(title: "Channels", note: "Star any channel of your account. Starred channels go first in their country row on Home; channels of other countries go in “More favourites”.")
+            BlockTitle(title: "Channels", note: "Star any channel of your account. Starred channels go first in their country row on Home; channels of other countries go in “More favourites”.")
             Button(action: browse) { Label("Browse all channels", systemImage: "star") }.buttonStyle(PillButtonStyle()).padding(.bottom, 12)
             if user.favs.isEmpty {
                 Text("No starred channels yet.").font(.ui(22)).foregroundStyle(.white.opacity(0.5))
@@ -478,33 +494,31 @@ private struct AccountsPane: View {
     @State private var newName = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PaneTitle(title: "Sources", note: "Your sources, kept in this Apple TV's Keychain and never shown. Click switches; long press renames, removes or chooses groups.")
-            Button(action: add) { Label("Add a source", systemImage: "plus") }.buttonStyle(PillButtonStyle()).padding(.bottom, 12)
+            PaneTitle(title: "Sources", note: "Your sources, kept in this Apple TV\u{2019}s Keychain and never shown.")
             ForEach(catalog.accounts) { a in
                 let active = a.id == catalog.activeId
-                Button {
-                    if !active { user.show("Switching to \(a.name)…"); Task { await catalog.use(a.id, languages: settings.languages) } }
-                } label: {
-                    HStack(spacing: 16) {
-                        Image(systemName: a.type.icon).frame(width: 34).foregroundStyle(active ? Color.green : Color.primary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(a.name)
-                            Text(a.note.isEmpty ? a.type.title : a.note).font(.ui(18)).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(active ? "Active" : "Switch").font(.ui(20)).foregroundStyle(active ? Color.green : Color.primary.opacity(0.55))
+                HStack(spacing: 16) {
+                    Image(systemName: a.type.icon).font(.ui(26)).frame(width: 40, height: 40)
+                        .foregroundStyle(active ? Color.green : Color.white.opacity(0.55))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(a.name).font(.ui(26, .semibold)).lineLimit(1)
+                        Text(a.note.isEmpty ? a.type.title : a.note).font(.ui(20)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
                     }
-                    .frame(width: 900)
+                    Spacer(minLength: 8)
+                    if a.type == .m3u { Button("Choose groups") { catalog.chooseGroups(for: a.id) }.buttonStyle(PillButtonStyle(height: 56, font: 20, hPad: 20)) }
+                    Button("Rename") { newName = a.name; renaming = a }.buttonStyle(PillButtonStyle(height: 56, font: 20, hPad: 20))
+                    if active { Text("Active").font(.ui(22, .semibold)).foregroundStyle(Color.green).padding(.horizontal, 12) } else {
+                        Button("Switch") { user.show("Switching to \(a.name)\u{2026}"); Task { await catalog.use(a.id, languages: settings.languages) } }
+                            .buttonStyle(PillButtonStyle(height: 56, font: 20, hPad: 20))
+                        Button("Remove", role: .destructive) { catalog.removeAccount(a.id); user.show("Source removed") }
+                            .buttonStyle(PillButtonStyle(height: 56, font: 20, hPad: 20))
+                    }
                 }
-                .buttonStyle(ChipButtonStyle(selected: active, height: 78, idle: Color.white.opacity(0.05)))
-                .contextMenu {
-                    Button { newName = a.name; renaming = a } label: { Label("Rename", systemImage: "pencil") }
-                    if a.type == .m3u { Button { catalog.chooseGroups(for: a.id) } label: { Label("Choose groups", systemImage: "checklist") } }
-                    Button(role: .destructive) {
-                        if active { user.show("Switch to another source first") } else { catalog.removeAccount(a.id); user.show("Source removed") }
-                    } label: { Label("Remove source", systemImage: "trash") }
-                }
+                .padding(.horizontal, 18).padding(.vertical, 12).frame(width: 1100)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.05)))
+                .focusSection()
             }
+            Button(action: add) { Label("Add a source", systemImage: "plus") }.buttonStyle(PillButtonStyle()).padding(.top, 6)
         }
         .alert("Rename source", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -521,7 +535,7 @@ private struct SubtitlesPane: View {
     @ObservedObject private var osub = OpenSubtitles.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PaneTitle(title: "Subtitles", note: "With an OpenSubtitles account, the CC menu also lists online subtitles in your languages. Searching is free; each subtitle you pick uses one download.")
+            PaneTitle(title: "Online subtitles (OpenSubtitles)", note: "With an OpenSubtitles account, the CC menu also lists online subtitles in your languages. Searching is free; each subtitle you pick uses one download.")
             if let a = osub.account {
                 Text("Signed in as \(a.user)" + (osub.left.map { " · \($0) downloads left today" } ?? ""))
                     .font(.ui(24, .semibold)).padding(.bottom, 8)
@@ -578,6 +592,19 @@ private struct OSubForm: View {
     }
 }
 
+// MARK: - Search catalogue refresh (Apple TV only, under Film and series languages)
+
+private struct CataloguePane: View {
+    @EnvironmentObject var catalog: Catalog
+    @EnvironmentObject var settings: Settings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BlockTitle(title: "Catalogue", note: catalog.indexState == .loading ? "Updating\u{2026}" : "\(catalog.index.films.count) films, \(catalog.index.series.count) series indexed")
+            Button("Refresh now") { Task { await catalog.reload(languages: settings.languages) } }.buttonStyle(PillButtonStyle())
+        }
+    }
+}
+
 // MARK: - Clear lists
 
 private struct ClearPane: View {
@@ -587,13 +614,10 @@ private struct ClearPane: View {
     @State private var confirm: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            PaneTitle(title: "Clear lists", note: "Favourites, saved titles and resume points stay on this Apple TV, per account.")
+            BlockTitle(title: "Clear lists", note: "Favourites, saved titles and resume points stay on this Apple TV, per account.")
             line("Favourite channels", "\(user.favs.count) channels", "Clear favourites") { confirm = "favs" }
             line("Continue watching", "\(user.continueList.count) titles", "Clear Continue watching") { confirm = "resume" }
             line("My List", "\(user.myList.count) saved", "Clear My List") { confirm = "list" }
-            line("Catalogue", catalog.indexState == .loading ? "Updating…" : "\(catalog.index.films.count) films, \(catalog.index.series.count) series indexed", "Refresh now") {
-                Task { await catalog.reload(languages: settings.languages) }
-            }
         }
         .alert(title, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
             Button("Clear", role: .destructive) {

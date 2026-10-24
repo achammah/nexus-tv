@@ -22,6 +22,13 @@ var Guide = (function () {
         for (var i = 0; i < cats.length; i++) if (cats[i].label === keep) { cat = i; break; }
     }
     function cur() { return cats[cat] || null; }
+    // a list chosen on the country page (js/livecountry.js): the category holding that group, channels focused
+    var want = -1;
+    function pick() {
+        if (want < 0) return;
+        for (var i = 0; i < cats.length; i++) if (cats[i].gi.indexOf(want) >= 0) { cat = i; col = 2; ch = 0; chTop = 0; break; }
+        want = -1;
+    }
     function group() {
         var it = cur(); if (!d || !it) return [];
         if (it.idx && it.len === d.c.length) return it.idx;
@@ -47,19 +54,45 @@ var Guide = (function () {
             if (!keepPos) { cats = []; cat = 0; ch = 0; catTop = 0; chTop = 0; }
             layoutCats();
             if (col === 1 && cats.length === 1) col = 2;      // one list only: open its channels directly
+            pick();
             draw();
         });
         drawCountries();
     }
+    // Full list (the Live page's second view): the strip holds every country, pinned first, after a "Categories"
+    // chip that goes back to the categories view; it slides so the focused country stays in view.
+    var full = false, viewChip = false;
     function drawCountries() {
         var h = '', box = U.$('gCtry');
+        if (full) h += '<div class="ctry view' + (active && col === 0 && viewChip ? ' focus' : '') + '" id="gcv">&#9776;&nbsp; Categories</div>';
         for (var i = 0; i < C.length; i++) {
-            var c = 'ctry' + (i === cc ? ' on' : '') + (active && col === 0 && i === cc ? ' focus' : '');
-            h += '<div class="' + c + '" id="gc' + i + '">' + C[i][1] + '</div>';
+            var c = 'ctry' + (i === cc ? ' on' : '') + (active && col === 0 && !viewChip && i === cc ? ' focus' : '');
+            h += '<div class="' + c + '" id="gc' + i + '">' + U.esc(C[i][1]) + '</div>';
         }
-        box.innerHTML = h;
-        var x = 0;
-        for (var j = 0; j < C.length; j++) { var e = U.$('gc' + j); e.style.left = x + 'px'; x += e.offsetWidth + 8; }
+        box.innerHTML = '<div class="abs" id="gCtryIn" style="left:0;top:0;height:44px">' + h + '</div>';
+        var x = 0, fx = 0, fw = 0, v = U.$('gcv');
+        if (v) { v.style.left = '0px'; x = v.offsetWidth + 8; if (viewChip) fw = v.offsetWidth; }
+        for (var j = 0; j < C.length; j++) { var e = U.$('gc' + j); e.style.left = x + 'px'; if (j === cc && !viewChip) { fx = x; fw = e.offsetWidth; } x += e.offsetWidth + 8; }
+        var bw = box.offsetWidth || 364, off = Math.max(0, Math.min(fx + fw - bw + 40, x - 8 - bw));
+        if (fx - off < 0) off = fx;
+        U.$('gCtryIn').style.left = -Math.max(0, off) + 'px';
+    }
+    // Full list: the countries are a full-width first line above the three columns, which move down 64 px
+    function frame() {
+        var box = U.$('gCtry'), top = full ? 214 : 150, h = full ? 776 : 840;
+        ['gL', 'gM', 'gPrev'].forEach(function (id) { var g = U.$(id); g.style.top = top + 'px'; g.style.height = h + 'px'; });
+        if (full) { el.appendChild(box); box.style.left = '112px'; box.style.top = '150px'; box.style.width = '1696px'; }
+        else { U.$('gL').insertBefore(box, U.$('gL').firstChild); box.style.left = '18px'; box.style.top = '24px'; box.style.width = '364px'; }
+        U.$('gCats').style.top = U.$('gCatBar').style.top = (full ? 34 : 98) + 'px';
+    }
+    function goFull() {
+        full = true; frame();
+        LiveHome.fullList(function (list) {
+            var keep = d && C[cc] ? C[cc][0] : null, at = -1;
+            C = list;
+            for (var i = 0; i < C.length; i++) if (C[i][0] === keep) at = i;
+            if (at >= 0) { cc = at; draw(); } else { d = null; col = 0; load(0); }
+        });
     }
     function drawCats() {
         if (!d) return;
@@ -137,11 +170,18 @@ var Guide = (function () {
             onZap: function (i) { ch = i; } });
     }
     function key(c) {
-        if (!d) return c === 38 ? 'up' : true;
+        if (!d && !(col === 0 && viewChip)) return c === 38 ? 'up' : true;
         var g = group();
         switch (col) {
             case 0:
+                if (viewChip) {
+                    if (c === 39) { viewChip = false; drawCountries(); }
+                    else if (c === 13) { viewChip = false; full = false; frame(); LiveHome.setView('cat'); }
+                    else if (c === 38) return 'up';
+                    return true;
+                }
                 if (c === 37 && cc > 0) load(cc - 1);
+                else if (c === 37 && full) { viewChip = true; drawCountries(); }
                 else if (c === 39 && cc < C.length - 1) load(cc + 1);
                 else if (c === 40 || c === 13) { col = cats.length === 1 ? 2 : 1; draw(); }
                 else if (c === 38) return 'up';
@@ -176,11 +216,11 @@ var Guide = (function () {
     function init() {
         el = U.$('guide'); C = Data.COUNTRIES;
         el.innerHTML = '<div class="abs bgshade" style="background:#000"></div>' +
-            '<div class="glass" style="left:112px;top:150px;width:400px;height:840px">' +
-            '<div class="abs" id="gCtry" style="left:18px;top:24px;width:364px;height:44px"></div>' +
+            '<div class="glass" id="gL" style="left:112px;top:150px;width:400px;height:840px">' +
+            '<div class="abs" id="gCtry" style="left:18px;top:24px;width:364px;height:44px;overflow:hidden"></div>' +
             '<div class="abs" id="gCats" style="left:18px;top:98px;width:364px;height:730px;overflow:hidden"></div>' +
             '<div class="scrollbar" id="gCatBar" style="left:390px;top:98px;height:724px"><i></i></div></div>' +
-            '<div class="glass" style="left:532px;top:150px;width:680px;height:840px">' +
+            '<div class="glass" id="gM" style="left:532px;top:150px;width:680px;height:840px">' +
             '<div class="sect" id="gChHead" style="left:32px;top:30px"></div>' +
             '<div class="abs" id="gChs" style="left:14px;top:70px;width:652px;height:710px"></div>' +
             '<div class="scrollbar" id="gChBar" style="left:670px;top:70px;height:700px"><i></i></div></div>' +
@@ -189,20 +229,25 @@ var Guide = (function () {
     }
     return {
         init: init, key: key,
-        reset: function () { C = Data.COUNTRIES; cc = 0; d = null; cats = []; rows = []; cat = 0; ch = 0; catTop = 0; chTop = 0; },
+        reset: function () { if (full && el) { full = false; frame(); } full = false; viewChip = false; C = Data.COUNTRIES; cc = 0; d = null; cats = []; rows = []; cat = 0; ch = 0; catTop = 0; chTop = 0; },
         longPress: function () { return active && col === 2 ? favCur() : false; },
         // a pinned country (index in Data.COUNTRIES); a country with one list opens its channels directly
-        openCountry: function (i) {
+        // gi (optional): a group index of the list to open on, from the country page
+        openCountry: function (i, gi) {
+            if (full) { full = false; frame(); } viewChip = false;
             if (C !== Data.COUNTRIES) { C = Data.COUNTRIES; d = null; }
-            col = 1;
-            if (i !== cc || !d) load(i); else if (cats.length === 1) col = 2;
+            col = 1; want = gi === undefined ? -1 : gi;
+            if (i !== cc || !d) load(i); else { if (cats.length === 1) col = 2; pick(); }
         },
         // any other country or region of the source: code = provider code in lower case ('de'), name = its title
-        openCode: function (code, name) {
-            if (C.length === 1 && C[0][0] === code && d) { col = cats.length === 1 ? 2 : 1; return; }
+        openCode: function (code, name, gi) {
+            if (full) { full = false; frame(); } viewChip = false;
+            want = gi === undefined ? -1 : gi;
+            if (C.length === 1 && C[0][0] === code && d) { col = cats.length === 1 ? 2 : 1; pick(); return; }
             C = [[code, name]]; d = null; col = 1; load(0);
         },
-        show: function () { if (!d) load(cc); else draw(); },
+        // arg 'full': the Live tab in Full list view (every country in the strip)
+        show: function (arg) { if (arg === 'full' && !full) { goFull(); return; } if (!d) load(cc); else draw(); },
         focus: function () { active = true; draw(); },
         blur: function () { active = false; if (d) draw(); },
         refresh: function () { if (d) draw(); }

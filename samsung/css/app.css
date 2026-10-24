@@ -34,6 +34,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; 
 /* ---------- shared bits ---------- */
 .pill { display: inline-block; height: 28px; line-height: 28px; padding: 0 10px; border-radius: 7px; font-size: 16px; font-weight: 700; letter-spacing: .6px; vertical-align: middle; }
 .pill.live { background: #FF3B4E; color: #fff; }
+/* the badges inside the player and lists stay inline, whatever page pills add */
+#player .pill, .pt .pill, .ps .pill, .pill.live, .pill.dim { position: static; border: 0; height: 28px; line-height: 28px; padding: 0 10px; border-radius: 7px; font-size: 16px; font-weight: 700; color: #fff; top: auto; right: auto; }
 .pill.dim { background: rgba(255,255,255,.16); color: #fff; }
 .btn { position: absolute; height: 60px; padding: 0 30px; border-radius: 30px; font-size: 24px; font-weight: 600; line-height: 58px; white-space: nowrap;
   background: rgba(20,20,24,.62); border: 1px solid rgba(255,255,255,.16); }
@@ -249,13 +251,14 @@ html.playing #player { visibility: visible; }
 @keyframes sweep { from { transform: translateX(0); } to { transform: translateX(280%); } }
 .skel.line { height: 22px; border-radius: 11px; }
 /* player loading card */
-#player .load { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; display: none; }
-#player .load.on { display: block; }
+#player .load { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; opacity: 0; visibility: hidden;
+  -webkit-transition: opacity .6s ease, visibility 0s linear .6s; transition: opacity .6s ease, visibility 0s linear .6s; }
+#player .load.on { opacity: 1; visibility: visible; -webkit-transition: none; transition: none; }
 #player .load .lb { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: center / cover no-repeat; opacity: .35; }
-#player .load .lt { position: absolute; left: 160px; bottom: 260px; font-size: 56px; font-weight: 700; max-width: 1400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#player .load .ls { position: absolute; left: 160px; bottom: 210px; font-size: 26px; color: rgba(255,255,255,.7); }
-#player .load .lp { position: absolute; left: 160px; bottom: 170px; width: 600px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }
-#player .load .lp i { position: absolute; left: 0; top: 0; height: 6px; width: 0; background: #fff; border-radius: 3px; -webkit-transition: width .3s; transition: width .3s; }
+#player .pl { position: absolute; left: 112px; bottom: 276px; height: 110px; }
+#player .pl img { height: 110px; max-width: 360px; }
+#player .info.tuning { -webkit-transition: none; transition: none; }
+#player .ps .tune { color: rgba(255,255,255,.55); }
 .favstar { position: absolute; right: 10px; top: 6px; font-size: 26px; color: #FFC94D; text-shadow: 0 1px 4px rgba(0,0,0,.6); z-index: 2; }
 
 /* dark logos (black on transparent) sit on a light card */
@@ -540,3 +543,64 @@ html.intro #gpk, html.playing #gpk { visibility: hidden; }
 .lvc.chip .nof { position: absolute; left: 20px; top: 17px; width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.14); }
 .lvc.chip .cn { position: absolute; left: 72px; right: 120px; top: 0; line-height: 72px; font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lvc.chip .cg { position: absolute; right: 20px; top: 0; line-height: 72px; font-size: 19px; color: rgba(255,255,255,.45); white-space: nowrap; }
+
+/* ---------- a country's Live page: family shelves of list cards (js/livecountry.js; cards = the Films .card) ---------- */
+.lcall { position: absolute; right: 112px; font-size: 22px; font-weight: 500; line-height: 30px; color: rgba(255,255,255,.5); white-space: nowrap; }
+.lcard .lct { position: absolute; width: 109px; height: 58px; border-radius: 8px; background: #1F2128; overflow: hidden; }
+.lcard .lct.light { background: #E9EBEF; }
+.lcard .lct img { position: absolute; left: 12%; top: 18%; width: 76%; height: 64%; }
+.lct .wm.s1 span { font-size: 14px; } .lct .wm.s2 span { font-size: 11px; } .lct .wm.s3 span { font-size: 9px; }
+.lct .wm span { left: 5%; right: 5%; }
+.lct.hasimg .wm { display: none; }
+.lcard .tx { right: auto; width: 270px; }
+
+/* ---------- Settings: one page of grouped sections like the Mac (js/settings.js) ---------- */
+.sthint { position: absolute; font-size: 21px; color: rgba(255,255,255,.5); white-space: nowrap; }
+.stbox { position: absolute; border-radius: 18px; background: rgba(255,255,255,.06); }
+.srow.strow { height: 96px; border-radius: 18px; background: transparent; }
+.srow.strow.sep:before { content: ''; position: absolute; left: 30px; right: 30px; top: 0; height: 1px; background: rgba(255,255,255,.08); }
+.srow.strow.focus { background: #fff; -webkit-transform: scale(1.015); transform: scale(1.015); z-index: 2; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.srow.strow.focus:before, .srow.strow.focus + .srow.strow:before { display: none; }
+.srow.strow .sl { top: 16px; line-height: 36px; font-size: 26px; font-weight: 500; white-space: nowrap; max-width: 900px; overflow: hidden; text-overflow: ellipsis; }
+.srow.strow .sh { position: absolute; top: 54px; line-height: 26px; font-size: 19px; color: rgba(255,255,255,.5); white-space: nowrap; }
+.srow.strow.focus .sh { color: rgba(0,0,0,.55); }
+.srow.strow .mv { left: 30px; line-height: 96px; }
+.srow.strow .sv { right: 24px; line-height: 96px; }
+.srow.strow .sv.on { color: #34C759; font-weight: 700; }
+.srow.strow.focus .sv.on { color: #1E9E44; }
+.srow.strow .sv.chev { font-size: 40px; color: rgba(255,255,255,.4); }
+.srow.strow.focus .sv.chev { color: rgba(0,0,0,.45); }
+.srow.strow .tg { top: 30px; }
+.srow.strow .sic { position: absolute; left: 30px; top: 24px; width: 48px; height: 48px; line-height: 46px; text-align: center; border-radius: 12px; font-size: 32px; font-weight: 300;
+  background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); }
+.srow.strow .sic svg { width: 26px; height: 26px; margin-top: 11px; }
+.srow.strow .sic.on { color: #34C759; }
+.srow.strow.focus .sic { background: rgba(0,0,0,.08); color: rgba(0,0,0,.65); }
+.srow.strow.focus .sic.on { color: #1E9E44; }
+.srow.strow .sb { position: absolute; top: 26px; height: 44px; line-height: 44px; text-align: center; border-radius: 22px; font-size: 20px; font-weight: 600; white-space: nowrap;
+  background: rgba(255,255,255,.12); color: #fff; }
+.srow.strow .sb.red { color: #FF6B78; }
+.srow.strow .sb.chip.on { background: rgba(52,199,89,.28); }
+.srow.strow.focus .sb { background: rgba(0,0,0,.08); color: rgba(0,0,0,.75); }
+.srow.strow.focus .sb.chip.on { background: rgba(52,199,89,.3); color: #0B5D22; }
+.srow.strow.focus .sb.sel { background: #000; color: #fff; }
+.srow.strow.focus .sb.red.sel { background: #FF3B4E; color: #fff; }
+
+/* ---------- Live: the view pill (Categories | Full list), the channel grid of one list (js/livehome.js, js/livelist.js) ---------- */
+.pill.lvpill span { color: rgba(255,255,255,.5); margin: 0 8px; }
+.pill.lvpill span.on { color: #fff; font-weight: 600; }
+.pill.lvpill.focus span { color: rgba(0,0,0,.45); }
+.pill.lvpill.focus span.on { color: #000; }
+.ctry.view { background: rgba(255,255,255,.14); color: #fff; font-weight: 600; }
+.ctry.view.focus { background: #fff; color: #000; }
+.chl { position: absolute; border-radius: 13px; background: #1F2128; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,.5);
+  -webkit-transition: -webkit-transform .16s cubic-bezier(.2,.8,.25,1); transition: transform .16s cubic-bezier(.2,.8,.25,1); }
+.chl.light { background: #E9EBEF; }
+.chl img { position: absolute; left: 20%; top: 13%; width: 60%; height: 46%; }
+.chl .cn { position: absolute; left: 10px; right: 10px; bottom: 12px; text-align: center; font-size: 17px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(255,255,255,.9); display: none; }
+.chl.light .cn { color: #1a1c22; }
+.chl.hasimg .cn { display: block; }
+.chl.hasimg .wm { display: none; }
+.chl .wm.s1 span { font-size: 24px; } .chl .wm.s2 span { font-size: 20px; } .chl .wm.s3 span { font-size: 16px; }
+.chl.focus { -webkit-transform: translateY(-6px) scale(1.07); transform: translateY(-6px) scale(1.07); z-index: 3; box-shadow: 0 18px 40px rgba(0,0,0,.8), 0 0 0 4px #fff; }

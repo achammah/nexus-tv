@@ -15,6 +15,8 @@ final class MacPlayerModel: ObservableObject {
     @Published var next: [MediaItem]
     @Published var picture: String
     @Published var reconnecting = false
+    /// The account's only stream is used by another device: waiting for it, checked every 5 s for 2 minutes.
+    @Published var busy = false
     @Published var attempts = 0
     @Published var upLeft = 0
     @Published var online: [OSResult] = []
@@ -60,6 +62,7 @@ final class MacPlayerModel: ObservableObject {
         if !again { attempts = 0; reconnecting = false; upDone = false }
         autoSync.stop()      // a new stream: its own reference
         if onlineFor != item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] } else { onlineTrack = nil }
+        vlc.preferredAudio = user.trackPref(item)?.audioLang
         vlc.play(url, startMs: startMs, live: isLive)
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "NXMute") { vlc.player.audio?.isMuted = true }     // checks that run while the owner works
@@ -92,9 +95,20 @@ final class MacPlayerModel: ObservableObject {
         let at = isLive ? 0 : max(vlc.timeMs, startMs)
         saveResume()
         vlc.stop()
-        let delay = UInt64(1 << (attempts - 1))
+        // live: at least 3 s, or the provider still counts the old stream and refuses the new one
+        let delay = UInt64(isLive ? max(3, 1 << (attempts - 1)) : 1 << (attempts - 1))
         Task {
             try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            if await catalog.accountFull() == true {
+                busy = true; attempts = max(0, attempts - 1)
+                var free = false
+                for _ in 0..<24 where reconnecting {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    if await catalog.accountFull() != true { free = true; break }
+                }
+                busy = false
+                if !free { reconnecting = false; retryPending = false; vlc.failed = true; show("Still in use on another device. Try again later."); return }
+            }
             retryPending = false
             guard reconnecting else { return }
             startMs = at

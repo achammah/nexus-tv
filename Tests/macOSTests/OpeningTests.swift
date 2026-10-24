@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import AppKit
 @testable import NexusTVMac
 
 /// The opening's numbers and its rest frame, checked off screen (no mouse, no keyboard).
@@ -67,5 +68,24 @@ final class OpeningTests: XCTestCase {
     /// Tests and screenshots (any -NX argument) start without the opening, so their first press is never eaten.
     func testGateOffUnderTestArguments() {
         XCTAssertEqual(OpeningGate.enabled, !ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("-NX") } || OpeningGate.frozenFrame != nil)
+    }
+
+    /// Exports the native opening as 1920x1080 PNG frames (for the Frame TV's video), only when asked:
+    /// TEST_RUNNER_NX_EXPORT_OPENING=1 xcodebuild test ... ; frames land in <tmp>/nx-opening/ (path printed).
+    func testExportOpeningFrames() throws {
+        guard ProcessInfo.processInfo.environment["NX_EXPORT_OPENING"] == "1" else { throw XCTSkip("export not asked") }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nx-opening")
+        try? FileManager.default.removeItem(at: dir)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let n = Int(OpeningSpec.duration * OpeningSpec.fps)
+        for f in 0...n {
+            let r = ImageRenderer(content: OpeningFrame(frame: Double(f)).frame(width: 1920, height: 1080).environment(\.colorScheme, .dark))
+            r.scale = 1
+            guard let cg = r.cgImage else { XCTFail("no render at \(f)"); return }
+            let rep = NSBitmapImageRep(cgImage: cg)
+            let data = rep.representation(using: .png, properties: [:])!
+            try data.write(to: dir.appendingPathComponent(String(format: "f%03d.png", f)))
+        }
+        print("NX_OPENING_DIR=\(dir.path) frames=\(n + 1)")
     }
 }

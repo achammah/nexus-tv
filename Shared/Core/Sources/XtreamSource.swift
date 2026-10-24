@@ -42,3 +42,18 @@ final class XtreamSource: LibrarySource {
         }
     }
 }
+
+extension Catalog {
+    /// Whether every stream of the account is in use (Xtream user_info: active_cons >= max_connections). nil when the
+    /// source cannot say (playlists and portals) or the check fails; false when the account has no limit.
+    func accountFull() async -> Bool? {
+        guard let x = source as? XtreamSource, let d = try? await x.api.data(nil),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let ui = o["user_info"] as? [String: Any] else { return nil }
+        return Self.isFull(ui)
+    }
+    nonisolated static func isFull(_ ui: [String: Any]) -> Bool {
+        func n(_ k: String) -> Int { if let s = ui[k] as? String { return Int(s) ?? 0 }; return (ui[k] as? NSNumber)?.intValue ?? 0 }
+        let limit = n("max_connections")
+        return limit > 0 && n("active_cons") >= limit
+    }
+}

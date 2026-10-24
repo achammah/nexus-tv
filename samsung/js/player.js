@@ -47,8 +47,9 @@ var Player = (function () {
         nb.className = 'nextb show' + (onNext ? ' focus' : '');
         nb.innerHTML = ICON.next;
     }
+    var tuning = false;   // the bar is the loading state too: same name, logo and line, over black, until the picture plays
     function setInfo(show, keep) {
-        info.className = 'info' + (show ? ' show' : '');
+        info.className = 'info' + (show ? ' show' : '') + (cur && cur.k === 'live' ? ' live' : '') + (tuning ? ' tuning' : '');
         clearTimeout(infoT);
         if (!show) { ctl = false; onBar = false; onNext = false; closeMenu(); }
         drawBar(); drawNext();
@@ -56,7 +57,9 @@ var Player = (function () {
     }
     function render() {
         info.querySelector('.pt').textContent = cur.name || '';
-        info.querySelector('.ps').innerHTML = cur.k === 'live' ? '<span class="pill live">LIVE</span>&nbsp; ' + U.esc(cur.sub || '') : U.esc(cur.sub || '');
+        info.querySelector('.ps').innerHTML = (cur.k === 'live' ? '<span class="pill live">LIVE</span>&nbsp; ' : '') + U.esc(cur.sub || '') + '<span class="tune"></span>';
+        var logo = cur.k === 'live' ? U.logoFor(cur.name, cur.img || '') : '';
+        info.querySelector('.pl').innerHTML = logo ? '<img src="' + U.esc(U.img(logo)) + '" onerror="this.parentNode.innerHTML=\'\'">' : '';
         info.querySelector('.prog').style.display = vod() ? 'block' : 'none';
         info.querySelector('.time').textContent = '';
         info.querySelector('.prog i').style.width = '0';
@@ -164,7 +167,7 @@ var Player = (function () {
     function startAlign() {
         var emb = tracks('TEXT'); if (!emb.length || !cur.ext) return;
         var ref = emb[0]; for (var i = 0; i < emb.length; i++) if (/^en/.test(String(emb[i].extra.language || emb[i].extra.track_lang || ''))) { ref = emb[i]; break; }
-        cur.ext.ref = { starts: [], last: '', n: 0 };
+        cur.ext.ref = { starts: [], last: '', n: 0, index: ref.index };
         afterPlay(cur, function () { webapis.avplay.setSelectTrack('TEXT', ref.index); webapis.avplay.setSilentSubtitle(false); }, null);
         U.log({ ev: 'subs.align.start', ref: ref.label });
     }
@@ -174,24 +177,47 @@ var Player = (function () {
         if (text === R.last) return; R.last = text;
         try { t = webapis.avplay.getCurrentTime(); } catch (e) { return; }
         R.starts.push(t); if (R.starts.length > 40) R.starts.shift();
+        if (R.n < 3 || R.n % 10 === 0) U.log({ ev: 'subs.ref', n: R.n + 1, at: t });
         if (++R.n % 4 === 0 && R.starts.length >= 6) align();
     }
     function align() {
-        var E = cur.ext, cues = E.cues, st = E.ref.starts, best = 0, score = 0, bins = {};
+        var E = cur.ext;
+        // the TV did not say the video's frame rate: also try the usual 25 versus 23.976 rescales, keep the best
+        if (!E.kFixed && E.r && E.r.fps && !videoFps()) {
+            var ks = [1, 23.976 / 25, 25 / 23.976], bestK = E.k, bestS = -1;
+            for (var q = 0; q < ks.length; q++) { E.k = ks[q]; var sc = alignScore(E).score; if (sc > bestS) { bestS = sc; bestK = ks[q]; } }
+            E.k = bestK;
+        }
+        var res = alignScore(E), best = res.best, score = res.score, st = E.ref.starts;
+        if (st.length >= 10 && score >= st.length * 0.4) E.kFixed = true;
+        alignUse(E, best, score, st);
+    }
+    function alignScore(E) {
+        var cues = E.cues, st = E.ref.starts, best = 0, score = 0, bins = {};
         for (var i = 0; i < st.length; i++) {
             var te = st[i] * E.k, lo = 0, hi = cues.length - 1;
             while (lo < hi) { var m = (lo + hi) >> 1; if (cues[m].a < te - 20000) lo = m + 1; else hi = m; }
             for (var j = lo; j < cues.length && cues[j].a <= te + 20000; j++) { var b = Math.round((te - cues[j].a) / 100); bins[b] = (bins[b] || 0) + 1; }
         }
         for (var key in bins) { var c = (bins[key - 2] || 0) + (bins[key - 1] || 0) + bins[key] + (bins[+key + 1] || 0) + (bins[+key + 2] || 0); if (c > score) { score = c; best = +key * 100; } }
+        return { best: best, score: score };
+    }
+    function alignUse(E, best, score, st) {
         var ok = st.length >= 10 && score >= st.length * 0.4;
         if (ok) { E.off = best; saveOff(E.file, best); }
-        U.log({ ev: 'subs.align', off: best, score: score, n: st.length, used: ok, file: E.file });
+        U.log({ ev: 'subs.align', off: best, score: score, n: st.length, used: ok, k: E.k, file: E.file });
         // after a minute of dialogue with no agreement, this file is timed for another cut: try the next one
         if (!ok && st.length >= 16 && E.alts.length) {
             var nx = E.alts.shift(); nx.alts = E.alts; cur.ext0 = { ref: E.ref }; E.ref.starts = E.ref.starts.slice();
             U.log({ ev: 'subs.align.switch', to: nx.file, name: nx.name }); useOnline(nx, E.idx);
         }
+    }
+    // the online cue for the player clock; the offset is a constant per file, so a seek keeps it
+    function extDraw(at) {
+        if (!cur || !cur.ext) return;
+        var t = at; if (t == null) { try { t = webapis.avplay.getCurrentTime(); } catch (e) { return; } }
+        var x = Subs.at(cur.ext.cues, t * cur.ext.k - cur.ext.off);
+        if (subEl.getAttribute('data-x') !== x) { subEl.setAttribute('data-x', x); subEl.innerHTML = U.esc(x).replace(/\n/g, '<br>'); }
     }
     function useOnline(r, idx) {
         var it = cur; U.toast('Loading subtitles\u2026');
@@ -206,12 +232,16 @@ var Player = (function () {
             var keepRef = cur.ext0 && cur.ext0.ref;
             cur.ext = { cues: cues, idx: idx, file: r.file, off: loadOff(r.file), k: k, r: r, alts: r.alts || [] };
             if (keepRef) { cur.ext.ref = keepRef; cur.ext0 = null; }
-            extT = setInterval(function () {
-                if (!cur || !cur.ext) return;
-                var t = 0; try { t = webapis.avplay.getCurrentTime(); } catch (e3) { return; }
-                var x = Subs.at(cur.ext.cues, t * cur.ext.k - cur.ext.off); if (subEl.getAttribute('data-x') !== x) { subEl.setAttribute('data-x', x); subEl.innerHTML = U.esc(x).replace(/\n/g, '<br>'); }
-            }, 200);
-            if (!r.exact && !cur.ext.ref) startAlign();
+            extT = setInterval(function () { extDraw(); }, 200);
+            // aligned at once from the file's own index when it was read before playback; else live, as cues play
+            var refStarts = !r.exact && window.SubSync ? SubSync.cached(SubSync.keyOf(cur)) : null;
+            if (refStarts && refStarts.length) {
+                var ks = k !== 1 || (vf && r.fps) ? [k] : [1, 23.976 / 25, 25 / 23.976];
+                var v = SubSync.vote(refStarts, cues, ks);
+                U.log({ ev: 'subs.align', src: 'index', off: v.off, k: v.k, score: v.score, n: v.n, used: v.ok, file: r.file });
+                if (v.ok) { cur.ext.off = v.off; cur.ext.k = v.k; cur.ext.kFixed = true; saveOff(r.file, v.off); extDraw(); }
+                else if (!cur.ext.ref) startAlign();
+            } else if (!r.exact && !cur.ext.ref) startAlign();
             U.toast(langName(r.lang) + ' subtitles on' + (left != null ? ' \u00b7 ' + left + ' downloads left today' : ''));
             U.log({ ev: 'subs.dl', n: cues.length, left: left, vfps: vf, sfps: r.fps, k: k });
         });
@@ -219,7 +249,7 @@ var Player = (function () {
     var audioFail = '';
     // Runs fn once playback runs: tries at 1.2 s, then 3 s. onFail gets the last error.
     function afterPlay(item, fn, onFail) {
-        var tries = [1200, 1800];
+        var tries = [1200, 1800, 3000, 5000];   // the TV accepts an audio change only once playback has settled (about 3 s on MKV with AC3)
         (function next() {
             setTimeout(function () {
                 if (cur !== item) return;
@@ -230,22 +260,44 @@ var Player = (function () {
     }
     // A mid-playback audio change on this TV can leave the sound out of step with the picture: jump to the
     // current time once, which flushes both and lines them up again (films and episodes only).
-    function resync(item) {
-        if (!vod()) return;
-        setTimeout(function () {
+    // which audio track the TV is actually playing (its language), for the log
+    function playingAudio() {
+        try { var a = webapis.avplay.getCurrentStreamInfo(); for (var i = 0; i < a.length; i++) if (a[i].type === 'AUDIO') return a[i].index + ':' + (a[i].extra_info || '').slice(0, 80); } catch (e) { return 'err ' + String(e); }
+        return 'none';
+    }
+    // One audio switch rule (research: Samsung AVPlay accepts an AUDIO change only in PLAYING, and this TV only
+    // about 2 to 3 s after play; open-source Tizen players retry and then confirm). Retry every 500 ms for up
+    // to 6 s, then read back the track that plays; never seek afterwards (a seek after the switch broke the sync
+    // and once put the default track back). Subtitles are re-asserted once the audio has landed.
+    var selT = null;
+    function selectAudio(item, index, done) {
+        clearTimeout(selT);
+        var until = Date.now() + 6000, want = String(index);
+        (function tryIt() {
             if (cur !== item) return;
-            try { var t = webapis.avplay.getCurrentTime(); webapis.avplay.seekTo(t, function () { U.log({ ev: 'av.resync', at: t }); }, function (e) { U.log({ ev: 'av.resync.error', err: String(e) }); }); }
-            catch (e) { U.log({ ev: 'av.resync.error', err: String(e && (e.name || e.message) || e) }); }
-        }, 400);
+            var ok = false;
+            try { webapis.avplay.setSelectTrack('AUDIO', index); ok = true; } catch (e) { /* not accepted yet */ }
+            selT = setTimeout(function () {
+                if (cur !== item) return;
+                var now = playingAudioIndex();
+                if (ok && now === want) {
+                    U.log({ ev: 'audio.set', index: want });
+                    try {
+                        if (cur.subsOn && cur.textIndex != null) { webapis.avplay.setSelectTrack('TEXT', cur.textIndex); webapis.avplay.setSilentSubtitle(false); }
+                        else if (cur.ext && cur.ext.ref && cur.ext.ref.index != null) { webapis.avplay.setSelectTrack('TEXT', cur.ext.ref.index); webapis.avplay.setSilentSubtitle(false); }   // the realignment's reference
+                    } catch (e) { /* subtitles stay as they are */ }
+                    if (done) done(null);
+                } else if (Date.now() < until) tryIt();
+                else { U.log({ ev: 'audio.set.failed', index: want, playing: now }); if (done) done(new Error('not accepted')); }
+            }, ok ? 600 : 500);
+        })();
+    }
+    function playingAudioIndex() {
+        try { var a = webapis.avplay.getCurrentStreamInfo(); for (var i = 0; i < a.length; i++) if (a[i].type === 'AUDIO') return String(a[i].index); } catch (e) { /* unknown */ }
+        return '';
     }
     function switchAudio(index) {
-        try { webapis.avplay.setSelectTrack('AUDIO', index); resync(cur); return; } catch (e) { U.log({ ev: 'audio.live.error', err: String(e && (e.name || e.message) || e) }); }
-        try { webapis.avplay.pause(); webapis.avplay.setSelectTrack('AUDIO', index); webapis.avplay.play(); resync(cur); return; }
-        catch (e) { U.log({ ev: 'audio.paused.error', err: String(e && (e.name || e.message) || e) }); try { webapis.avplay.play(); } catch (e2) { /* reopened below */ } }
-        var it = cur;
-        try { it.pos = vod() ? webapis.avplay.getCurrentTime() : 0; } catch (e) { /* keep the last known position */ }
-        it.wantAudio = index;
-        start(it);
+        selectAudio(cur, index, function (err) { if (err) U.toast('This TV did not switch to that audio track'); });
     }
     function closeMenu() { menu = null; if (panel) { panel.className = 'tpanel'; panel.innerHTML = ''; } }
     function pick() {
@@ -256,7 +308,7 @@ var Player = (function () {
             else if (t.sync) { cur.ext.off += t.sync; saveOff(cur.ext.file, cur.ext.off); menu.list[0].label = 'Earlier \u00b7 \u22120.5 s  (now ' + fmtOff(cur.ext.off) + ')'; drawMenu(); return; }
             else if (t.online) { useOnline(t.online, t.index); }
             else if (t.index === -1) { webapis.avplay.setSilentSubtitle(true); cur.subsOn = false; extOff(); subEl.textContent = ''; }
-            else { extOff(); webapis.avplay.setSelectTrack('TEXT', t.index); webapis.avplay.setSilentSubtitle(false); cur.subsOn = true; }
+            else { extOff(); webapis.avplay.setSelectTrack('TEXT', t.index); webapis.avplay.setSilentSubtitle(false); cur.subsOn = true; cur.textIndex = t.index; }
             U.log({ ev: 'track.set', kind: menu.kind, index: t.index });
             if (cur.resumeItem) {
                 var pos = 0; for (var i = 0; i < menu.list.length; i++) if (menu.list[i] === t) pos = i;
@@ -267,23 +319,66 @@ var Player = (function () {
     }
 
     // ---------- loading card ----------
+    function tuneText(t) { var sp = info.querySelector('.ps .tune'); if (sp) sp.textContent = t ? (cur && cur.sub ? '  \u00b7  ' : '') + t : ''; }
     function showLoad(item) {
         var L = el.querySelector('.load');
         var pic = item.resumeItem && item.resumeItem.img ? U.img(item.resumeItem.img, 'w780') : '';
         L.querySelector('.lb').style.backgroundImage = pic ? 'url("' + pic + '")' : '';
-        L.querySelector('.lt').textContent = item.name || '';
-        L.querySelector('.ls').textContent = item.k === 'live' ? 'Tuning in…' : (item.pos ? 'Resuming at ' + U.fmtTime(item.pos) + '…' : 'Loading…');
-        L.querySelector('.lp i').style.width = '4%';
         L.className = 'load on';
+        tuning = true;
+        info.querySelector('.prog').style.display = 'block';
+        info.querySelector('.prog i').style.width = '4%';
+        tuneText(item.k === 'live' ? 'Tuning in\u2026' : (item.pos ? 'Resuming at ' + U.fmtTime(item.pos) + '\u2026' : 'Loading\u2026'));
+        setInfo(true, true);
     }
-    function loadPct(p) { var L = el.querySelector('.load'); if (L.className.indexOf('on') > 0) { L.querySelector('.lp i').style.width = Math.max(4, p) + '%'; L.querySelector('.ls').textContent = (cur && cur.k === 'live' ? 'Tuning in' : 'Loading') + '  ' + p + '%'; } }
-    function hideLoad() { el.querySelector('.load').className = 'load'; }
+    function loadPct(p) {
+        if (!tuning) return;
+        info.querySelector('.prog i').style.width = Math.max(4, p) + '%';
+        tuneText((cur && cur.k === 'live' ? 'Tuning in' : 'Loading') + '  ' + p + '%');
+    }
+    // the picture plays: the black fades away under the same bar, the status goes, the bar stays a moment
+    function hideLoad() {
+        var L = el.querySelector('.load'), was = tuning;
+        L.className = 'load';
+        if (!was) return;
+        tuning = false; tuneText('');
+        if (cur && cur.k === 'live') info.querySelector('.prog').style.display = 'none';
+        else info.querySelector('.prog i').style.width = '0';
+        if (cur) setInfo(true);
+    }
 
     // ---------- reconnect ----------
     var stallT = null, retryT = null;
+    // The account allows a set number of streams (often one). A refused stream with the account full shows
+    // "in use on another device" and tries again every 5 s for 2 min, so the device used last gets the slot
+    // as soon as the other one lets go.
+    var busyT = null, busyN = 0;
+    function busyRetry(item) {
+        var L = el.querySelector('.load');
+        busyN++;
+        if (busyN > 24) { busyN = 0; hideLoad(); U.toast('Still in use on another device. Try again later.'); return; }
+        try { showLoad(item); tuneText('Your account is in use on another device. Nexus TV starts as soon as it is free'); } catch (e) { /* no panel */ }
+        U.log({ ev: 'account.busy', n: busyN });
+        busyT = setTimeout(function () { if (cur === item) { item.tries = 0; start(item); } }, 5000);
+    }
     function reconnect(why) {
         if (!cur) return;
-        clearTimeout(stallT); clearTimeout(retryT);
+        clearTimeout(stallT); clearTimeout(retryT); clearTimeout(busyT);
+        if (why === 'error' || why === 'prepare') {
+            var it0 = cur;
+            try { stopAv(); } catch (e) { /* already closed */ }
+            U.api({}, function (err, d) {
+                if (cur !== it0) return;
+                var ui = d && d.user_info, max = ui ? parseInt(ui.max_connections, 10) : 0, act = ui ? parseInt(ui.active_cons, 10) : 0;
+                if (!err && max > 0 && act >= max) { busyRetry(it0); return; }
+                busyN = 0; retry(why);
+            });
+            return;
+        }
+        retry(why);
+    }
+    function retry(why) {
+        if (!cur) return;
         var n = (cur.tries || 0) + 1;
         U.log({ ev: 'reconnect', why: why, n: n });
         if (n > 5) { hideLoad(); busy.className = 'spinner busy'; U.toast('The stream stopped. Try again later.'); return; }
@@ -291,10 +386,13 @@ var Player = (function () {
         again.tries = n; if (cur.src) again.url = cur.src;
         if (vod() && cur.pos) again.pos = cur.pos;
         var L = el.querySelector('.load');
+        // The account allows one stream at a time: close this one now so the provider frees the slot, and give it
+        // a few seconds before the next try (a try at 1 s is refused as a second connection).
+        if (!vod()) { try { stopAv(); } catch (e) { /* already closed */ } }
         retryT = setTimeout(function () {
             start(again);
-            L.querySelector('.ls').textContent = 'Reconnecting… (' + n + ')';
-        }, Math.min(8000, 1000 * Math.pow(2, n - 1)));
+            tuneText('Reconnecting\u2026 (' + n + ')');
+        }, vod() ? Math.min(8000, 1000 * Math.pow(2, n - 1)) : Math.min(12000, 3000 + 2000 * (n - 1)));
     }
 
     // Apply the saved audio/subtitle choice for this title, by language first, else by position.
@@ -307,13 +405,7 @@ var Player = (function () {
             return want.pos >= 0 && list[want.pos] ? list[want.pos] : null;
         };
         var a = find(tracks('AUDIO'), p.audio);
-        try { if (a) webapis.avplay.setSelectTrack('AUDIO', a.index); }
-        catch (e) {
-            U.log({ ev: 'prefs.audio.error', err: String(e && (e.name || e.message) || e), codec: a.codec });
-            // the TV refuses an audio change before playback runs: apply it once playing
-            var it1 = cur;
-            afterPlay(cur, function () { webapis.avplay.setSelectTrack('AUDIO', a.index); resync(it1); }, null);
-        }
+        if (a && String(a.index) !== playingAudioIndex()) selectAudio(cur, a.index, null);   // applied once playing, then confirmed
         U.log({ ev: 'prefs.audio', want: p.audio || null, tracks: tracks('AUDIO').map(function (t) { return t.label; }), picked: a ? a.label : null });
         try {
             if (p.subs && p.subs.online) {
@@ -322,7 +414,7 @@ var Player = (function () {
                 }); }
             }
             else if (p.subs && p.subs.off) { webapis.avplay.setSilentSubtitle(true); cur.subsOn = false; }
-            else if (p.subs) { var s = find(tracks('TEXT'), p.subs); if (s) { webapis.avplay.setSelectTrack('TEXT', s.index); webapis.avplay.setSilentSubtitle(false); cur.subsOn = true; } }
+            else if (p.subs) { var s = find(tracks('TEXT'), p.subs); if (s) { webapis.avplay.setSelectTrack('TEXT', s.index); webapis.avplay.setSilentSubtitle(false); cur.subsOn = true; cur.textIndex = s.index; } }
             U.log({ ev: 'prefs.applied', audio: !!a, subs: cur.subsOn });
         } catch (e) { U.log({ ev: 'prefs.error', err: String(e && (e.name || e.message) || e) }); }
     }
@@ -346,13 +438,17 @@ var Player = (function () {
         }
         stopAv();
         upHide(); extOff(); cur = item; ctl = false; btn = 1; closeMenu(); seekAcc = 0;
-        render(); setInfo(true);
-        busy.className = 'spinner busy on';
+        // while it tunes in, only the loading card shows (its own name, status and bar); the channel bar and the
+        // spinner come once the picture plays or when a stall happens later
+        render();
+        busy.className = 'spinner busy';
         showLoad(item);
         document.documentElement.className = 'playing';
         U.log({ ev: 'play', k: item.k, name: item.name });
         if (vod() && item.resumeItem) U.setResume(item.resumeItem, item.pos || 0, 0);
         if (!av()) { U.toast('Player needs the TV'); busy.className = 'spinner busy'; return; }
+        // the account allows one connection: the file's subtitle index is read before the stream opens (4 s at most)
+        if (window.SubSync && vod() && SubSync.wants(item)) { SubSync.prefetch(item, function () { if (cur === item) start(item); }); return; }
         try {
             webapis.avplay.open(item.url);
             try {   // a playlist channel may ask for its own user agent or referrer
@@ -362,7 +458,7 @@ var Player = (function () {
             } catch (e) { /* not supported on this TV */ }
             webapis.avplay.setDisplayRect(0, 0, 1920, 1080);
             webapis.avplay.setListener({
-                onbufferingstart: function () { busy.className = 'spinner busy on'; clearTimeout(stallT); stallT = setTimeout(function () { reconnect('stall'); }, 9000); },
+                onbufferingstart: function () { if (!tuning) busy.className = 'spinner busy on'; clearTimeout(stallT); stallT = setTimeout(function () { reconnect('stall'); }, 9000); },
                 onbufferingcomplete: function () { busy.className = 'spinner busy'; hideLoad(); clearTimeout(stallT); if (cur) cur.tries = 0; },
                 onbufferingprogress: function (pct) { loadPct(pct); },
                 onstreamcompleted: function () {
@@ -383,9 +479,7 @@ var Player = (function () {
                 if (item.wantAudio != null) {
                     // the TV refuses an audio change before playback runs (PLAYER_ERROR_INVALID_OPERATION): wait for play
                     var want = item.wantAudio; item.wantAudio = null;
-                    afterPlay(item, function () { webapis.avplay.setSelectTrack('AUDIO', want); resync(item); }, function (e) {
-                        U.toast('Could not switch to this track (' + (audioFail ? audioFail + ', ' : '') + String(e && (e.name || e.message) || e) + ')');
-                    });
+                    selectAudio(item, want, null);
                 }
                 webapis.avplay.play();
                 busy.className = 'spinner busy';
@@ -428,7 +522,7 @@ var Player = (function () {
         clearTimeout(seekT);
         seekT = setTimeout(function () {
             var target;
-            try { target = Math.max(0, webapis.avplay.getCurrentTime() + seekAcc); webapis.avplay.seekTo(target); } catch (e) { U.log({ ev: 'seek.error', err: String(e) }); }
+            try { target = Math.max(0, webapis.avplay.getCurrentTime() + seekAcc); webapis.avplay.seekTo(target); extDraw(target); } catch (e) { U.log({ ev: 'seek.error', err: String(e) }); }
             seekAcc = 0; progress();
         }, 700);
     }
@@ -464,6 +558,7 @@ var Player = (function () {
         var t = scrub; scrub = null; streak = 0;
         var go = function () { try { webapis.avplay.play(); } catch (e) { /* idle */ } };
         try { webapis.avplay.seekTo(t, go, go); } catch (e) { U.log({ ev: 'seek.error', err: String(e) }); go(); }
+        extDraw(t);
         U.log({ ev: 'scrub', to: Math.round(t / 1000) });
         progress(); setInfo(true);
     }
@@ -474,9 +569,30 @@ var Player = (function () {
         try { webapis.avplay.seekTo(origin, go, go); } catch (e) { go(); }
         progress(); setInfo(true);
     }
+    // Paused for 2 minutes, or the app hidden: the stream is closed so another device can use the account;
+    // play again reopens it (films and episodes where they were, live from now).
+    var pauseT = null;
+    function release(why) {
+        if (!cur || cur.released) return;
+        try { if (vod()) cur.pos = webapis.avplay.getCurrentTime(); } catch (e) { /* keep the last position */ }
+        clearTimeout(stallT); clearTimeout(retryT); clearTimeout(busyT);
+        try { stopAv(); } catch (e) { /* closed */ }
+        cur.released = true; U.log({ ev: 'stream.released', why: why });
+    }
+    function reopen() {
+        if (!cur || !cur.released) return;
+        var again = {}; for (var k in cur) again[k] = cur[k];
+        again.released = false; again.tries = 0; if (cur.src) again.url = cur.src;
+        start(again);
+    }
     function togglePause() {
+        if (cur && cur.released) { reopen(); return; }
         if (!av()) return;
-        try { if (playing()) webapis.avplay.pause(); else webapis.avplay.play(); } catch (e) { /* idle */ }
+        clearTimeout(pauseT);
+        try {
+            if (playing()) { webapis.avplay.pause(); pauseT = setTimeout(function () { release('paused'); setInfo(true); }, 120000); }
+            else webapis.avplay.play();
+        } catch (e) { /* idle */ }
         setInfo(true);
     }
     function press(id) {
@@ -570,5 +686,5 @@ var Player = (function () {
     // The next episode found after playback started (resume from Continue watching).
     function setNext(item, fn, name) { if (cur !== item) return; cur.next = fn; cur.nextName = name || ''; drawNext(); }
     function setSubsItem(item, o) { if (cur === item) cur.osub = o; }
-    return { init: init, start: start, key: key, setNext: setNext, setSubsItem: setSubsItem, active: function () { return !!cur; } };
+    return { init: init, start: start, key: key, setNext: setNext, setSubsItem: setSubsItem, release: release, reopen: reopen, active: function () { return !!cur; } };
 })();

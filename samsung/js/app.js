@@ -194,7 +194,7 @@ var Intro = (function () {
                         clearTimeout(guard);
                         on = true; pending = false; document.documentElement.className = 'intro'; webapis.avplay.play();
                         var b = U.$('boot'); b.className = 'gone'; b.style.display = 'none';
-                        t = setTimeout(function () { end(); }, 3400); U.log({ ev: 'intro.play' });
+                        t = setTimeout(function () { end(); }, 3900); U.log({ ev: 'intro.play' });
                     }, function (e) { fail('intro.prepare.error', e); });
                 } catch (e) { fail('intro.open.error', e); }
             }, function (e) { fail('intro.resolve.error', e); }, 'r');
@@ -230,7 +230,7 @@ var App = (function () {
         var id = TABS[i].id;
         if (id === 'films' || id === 'series' || id === 'mylist') return { s: 'lib', arg: id };
         if (id === 'settings') return { s: 'settings', arg: null };
-        if (id === 'guide') return { s: 'live', arg: null };   // the Live page; a country opens the guide on top
+        if (id === 'guide') return LiveHome.view() === 'full' ? { s: 'guide', arg: 'full' } : { s: 'live', arg: null };   // Live: the categories page, or the full list (the guide)
         return { s: id, arg: null };
     }
     function renderNav() {
@@ -308,7 +308,7 @@ var App = (function () {
         contentKey(c, e);
     }
     function init() {
-        screens = { home: Home, live: LiveHome, guide: Guide, lib: Library, detail: Detail, search: Search, settings: Settings };
+        screens = { home: Home, live: LiveHome, livec: LiveCountry, livel: LiveList, guide: Guide, lib: Library, detail: Detail, search: Search, settings: Settings };
         buildTabs(); Data.applyCountries();
         for (var k in screens) { screens[k].name = k; screens[k].el = U.$(k); screens[k].init(); }
         Onboard.init(); GroupPicker.init();
@@ -329,12 +329,13 @@ var App = (function () {
         document.addEventListener('visibilitychange', function () {
             var b = U.$('boot');
             if (document.hidden) {
-                if (Player.active()) return;
+                if (Player.active()) { Player.release('hidden'); return; }   // frees the account's stream for another device
                 Intro.end(true);
                 b.style.display = 'block'; b.className = '';   // the black frame, same as the launcher's card
                 U.log({ ev: 'hidden' });
             } else {
                 U.log({ ev: 'shown' });
+                if (Player.active()) { Player.reopen(); return; }
                 // every open from the launcher plays the opening; the black frame stays until its first frame
                 if (Player.active() || !Intro.start()) { b.className = 'gone'; setTimeout(function () { b.style.display = 'none'; }, 300); }
             }

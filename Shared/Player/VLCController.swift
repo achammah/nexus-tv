@@ -33,6 +33,9 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     }
 
     /// Opens one stream. The account allows a single connection: the previous media is stopped and released first.
+    /// The preferred audio language for the next open (a language name such as "English"): passed to VLC as
+    /// :audio-language so the file starts in it; the player still checks the track once the list is known.
+    var preferredAudio: String?
     func play(_ url: URL, startMs: Int, live: Bool) {
         stop()
         // a portal gives a placeholder address: create_link turns it into the real stream just before it opens
@@ -54,6 +57,7 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
 
     private func open(_ url: URL, startMs: Int, live: Bool) {
         detectedLang = [:]
+        lastOpen = (url, live); released = false; releaseTask?.cancel()
         self.live = live
         failed = false; ended = false; started = false; loadPct = 0; timeMs = startMs; lengthMs = 0; paused = false
         lastProgress = Date(); lastTime = -1
@@ -65,6 +69,7 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
         m.addOption(":http-user-agent=" + (h?.userAgent.isEmpty == false ? h!.userAgent : "Mozilla/5.0 (AppleTV) NexusTV/1.0"))
         if let r = h?.referrer, !r.isEmpty { m.addOption(":http-referrer=" + r) }
         if startMs > 0 { m.addOption(":start-time=\(Double(startMs) / 1000)") }
+        if !live, let name = preferredAudio, let code = Self.languageCode(name) { m.addOption(":audio-language=" + code) }
         player.media = m
         player.play()
         poll?.invalidate()
@@ -93,9 +98,34 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
         poll?.invalidate()
         if player.media != nil { player.stop(); player.media = nil }
     }
-    func toggle() { if player.isPlaying { player.pause() } else { player.play() } }
-    func pause() { player.pause() }
-    func resume() { player.play() }
+    func toggle() { if player.isPlaying { pause() } else { resume() } }
+    func pause() { player.pause(); armRelease() }
+    func resume() { if released { reopen() } else { releaseTask?.cancel(); player.play() } }
+
+    // Paused for 2 minutes, or the app hidden: the stream is closed so another device can use the account's only
+    // connection; play again reopens it (films where they were, live from now).
+    @Published private(set) var released = false
+    private var lastOpen: (url: URL, live: Bool)?
+    private var releaseTask: Task<Void, Never>?
+    private func armRelease() {
+        releaseTask?.cancel()
+        releaseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000_000)
+            guard let self, !Task.isCancelled, !self.player.isPlaying else { return }
+            self.release()
+        }
+    }
+    func release() {
+        guard player.media != nil, !released else { return }
+        releaseTask?.cancel()
+        let at = timeMs
+        stop(); released = true; timeMs = at
+    }
+    func reopen() {
+        guard released, let o = lastOpen else { return }
+        released = false
+        play(o.url, startMs: o.live ? 0 : timeMs, live: o.live)
+    }
     func seek(toMs ms: Int) {
         guard player.isSeekable else { return }
         player.time = VLCTime(int: Int32(max(0, ms)))
@@ -129,6 +159,14 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     }
 
     /// An ISO 639 code or a language name, as an English language name ("fre" and "fr" -> "French"); nil otherwise.
+    /// "English" -> "en" (the ISO code VLC's audio-language option takes).
+    static func languageCode(_ name: String) -> String? {
+        let en = Locale(identifier: "en"), t = name.lowercased()
+        for code in Locale.LanguageCode.isoLanguageCodes.map(\.identifier) where code.count == 2 {
+            if en.localizedString(forLanguageCode: code)?.lowercased() == t { return code }
+        }
+        return t.count <= 3 ? t : nil
+    }
     private static var nameCache: [String: String?] = [:]
     static func languageName(_ s: String) -> String? {
         if let c = nameCache[s] { return c }

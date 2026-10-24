@@ -42,6 +42,9 @@ struct MacPlayerView: View {
                 poke()
             }
             .onDisappear { model.stop() }
+            // hidden or minimised: the account's only stream is given back for another device; play reopens it
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in model.saveResume(); model.vlc.release() }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMiniaturizeNotification)) { _ in model.saveResume(); model.vlc.release() }
             .onContinuousHover { _ in poke() }
             .onKeyPress { press in key(press) }
             .onChange(of: model.item) { _, _ in poke() }
@@ -127,7 +130,8 @@ private struct PlayerBody: View {
             Color.black
             MacVideoView(controller: vlc)
             if !vlc.started && !vlc.failed && !model.reconnecting { loading }
-            if model.reconnecting { pill("Reconnecting…  \(model.attempts)/5", spinner: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(24) }
+            if model.busy { pill("Your account is in use on another device. Nexus TV starts as soon as it is free.", spinner: true) }
+            else if model.reconnecting { pill("Reconnecting…  \(model.attempts)/5", spinner: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(24) }
             if vlc.failed { pill("This could not be played") }
             if let m = model.message { pill(m).frame(maxHeight: .infinity, alignment: .top).padding(.top, 60) }
             if hudVisible || model.upLeft > 0 {

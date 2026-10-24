@@ -1,4 +1,5 @@
-// Settings: show, hide and reorder menu tabs and Home rows, choose Live countries, clear lists.
+// Settings: one page like the Mac Settings and Sources pages: sources, Live countries, online subtitles, then
+// menu tabs, Home rows, channels, lists, clear lists and about.
 // Stored on the TV under 'nx_settings'. Other screens read Settings.get().
 var Settings = (function () {
     'use strict';
@@ -31,80 +32,139 @@ var Settings = (function () {
     var TYPE = { live: 'Live', vod: 'Films', series: 'Series' };
     var TYPE_NAME = { x: 'Xtream', m: 'M3U', p: 'Portal' };
 
-    // ---------- screen ----------
+    // ---------- screen: one page of grouped sections, like the Mac Settings and Sources pages ----------
+    // A row: label left, a short help line under it, its value or controls right. Up/Down move row by row,
+    // Left/Right move between the controls of a row (a source's buttons, the country toggles), OK runs or flips.
+    var SRC_TITLE = { x: 'Xtream login', m: 'M3U playlist', p: 'Portal' };
+    var SRC_ICON = {   // the Mac's symbols: server.rack, link, key
+        x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="7" rx="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.5"/><path d="M8 6.5h.01M8 17.5h.01"/></svg>',
+        m: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+        p: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>'
+    };
+    // Mac sections first, in the Mac order (Sources, Live countries, online subtitles), then the Frame's own ones.
     var ALL_SECTIONS = [
-        { id: 'tabs', title: 'Menu tabs', hint: 'OK shows or hides a tab. Edit order moves them.' },
-        { id: 'rows', title: 'Home rows', hint: 'OK shows or hides a row. Edit order moves them.' },
-        { id: 'countries', title: 'Live countries', hint: 'OK adds or removes a country. At least one stays on.' },
-        { id: 'channels', title: 'Channels', hint: 'Browse every channel of your source and star the ones you want first on Home.' },
-        { id: 'lists', title: 'Lists', hint: 'Every category of your source. Add any as a Home row. OK on a list removes it.' },
-        { id: 'accounts', title: 'Sources', hint: 'OK switches source. Hold OK to remove one.' },
-        { id: 'subs', title: 'Subtitles', hint: 'Online subtitles from OpenSubtitles for any film or episode, in the CC menu.' },
-        { id: 'clear', title: 'Clear lists', hint: 'OK clears the list on this TV.' },
+        { id: 'accounts', title: 'Sources', hint: 'Your sources, kept on this TV and never shown.' },
+        { id: 'countries', title: 'Live countries', hint: '' },
+        { id: 'subs', title: 'Online subtitles (OpenSubtitles)', hint: '' },
+        { id: 'tabs', title: 'Menu tabs', hint: '' },
+        { id: 'rows', title: 'Home rows', hint: '' },
+        { id: 'channels', title: 'Channels', hint: '' },
+        { id: 'lists', title: 'Lists', hint: '' },
+        { id: 'clear', title: 'Clear lists', hint: '' },
         { id: 'about', title: 'About', hint: '' }
     ];
     // Live countries only means something for an Xtream source
     var SECTIONS = [];
     function sections() { SECTIONS.length = 0; for (var i = 0; i < ALL_SECTIONS.length; i++) if (ALL_SECTIONS[i].id !== 'countries' || U.accounts.type() === 'x') SECTIONS.push(ALL_SECTIONS[i]); if (sec >= SECTIONS.length) sec = 0; }
-    var el, sec = 0, col = 0, item = 0, active = false, moving = false, editing = false;
+    var el, sec = 0, item = 0, act = 0, active = false, moving = false, editing = false, shift = 0;
+    var X0 = 112, W = 1920 - 2 * X0, ROW_H = 96, HEAD = 58, GAP = 34, TOP = 236, BOTTOM = 1040;
 
-    function items() {
-        var s = SECTIONS[sec].id;
-        var EDIT = { id: 'edit', label: editing ? '\u2713  Done' : '\u2195  Edit order', action2: true, edit: true };
-        if (s === 'tabs') return [EDIT].concat(S.tabs.map(function (id) { return { id: id, label: label(ALL_TABS, id), on: S.hideTabs.indexOf(id) < 0, fixed: id === 'home', move: true }; }));
-        if (s === 'rows') return [EDIT].concat(S.rows.map(function (id) { return { id: id, label: label(ALL_ROWS, id), on: S.hideRows.indexOf(id) < 0, move: true }; }));
-        if (s === 'channels') return [{ id: 'browse', label: '\u2605  Browse all channels', action2: true }].concat(U.favs().map(function (f) { return { id: f.sid, label: f.name, note: String(f.cc || '').toUpperCase(), info2: true }; }));
-        if (s === 'lists') return [{ id: '+', label: '+  Browse all lists', action2: true }].concat(S.lists.map(function (l) { return { id: l.key, label: l.name, note: TYPE[l.t], info2: true }; }));
+    // items of one section: { id, label, help, value, on (toggle), acts: [[id, label]], chips, ... }
+    function items(si) {
+        var s = SECTIONS[si].id;
+        if (s === 'tabs') return [{ id: 'edit', label: editing && si === sec ? 'Done' : 'Edit order', help: editing && si === sec ? (moving ? 'Up and Down move the tab. OK drops it.' : 'OK picks up a tab. Back finishes.') : 'Move the tabs of the menu. Home stays first.', btn: true, edit: true }]
+            .concat(S.tabs.map(function (id) { return { id: id, label: label(ALL_TABS, id), on: S.hideTabs.indexOf(id) < 0, fixed: id === 'home', move: true }; }));
+        if (s === 'rows') return [{ id: 'edit', label: editing && si === sec ? 'Done' : 'Edit order', help: editing && si === sec ? (moving ? 'Up and Down move the row. OK drops it.' : 'OK picks up a row. Back finishes.') : 'Move the rows of Home. OK on a row shows or hides it.', btn: true, edit: true }]
+            .concat(S.rows.map(function (id) { return { id: id, label: label(ALL_ROWS, id), on: S.hideRows.indexOf(id) < 0, move: true }; }));
+        if (s === 'channels') return [{ id: 'browse', label: 'Browse all channels', help: 'Every channel of your source. Star the ones you want first on Home.', btn: true }]
+            .concat(U.favs().map(function (f) { return { id: f.sid, label: f.name, help: 'Starred · OK removes the star', value: String(f.cc || '').toUpperCase() }; }));
+        if (s === 'lists') return [{ id: '+', label: 'Browse all lists', help: 'Every category of your source. Add any as a Home row.', btn: true }]
+            .concat(S.lists.map(function (l) { return { id: l.key, label: l.name, help: 'On Home · OK removes it', value: TYPE[l.t] }; }));
         if (s === 'accounts') {
-            var act = U.accounts.active().id;
-            var rows = [{ id: '+', label: '+  Add a source', action2: true }];
+            var cur = U.accounts.active().id, rows = [];
             U.accounts.list().forEach(function (a) {
-                rows.push({ id: a.id, label: a.name || a.user || 'Source', note: TYPE_NAME[a.type || 'x'] + ' \u00b7 ' + (a.id === act ? 'Active' : String(a.base).replace(/^https?:\/\//, '').replace(/[\/?].*$/, '')), info2: true, on: a.id === act });
-                if (a.big) rows.push({ id: 'g:' + a.id, label: '    Choose groups', note: (a.groups || []).length + ' of ' + (a.ngroups || '?') + ' groups', info2: true });
+                var t = a.type || 'x', on = a.id === cur, acts = [];
+                if (a.big) acts.push(['groups', 'Choose groups']);
+                if (!on) { acts.push(['switch', 'Switch']); acts.push(['remove', 'Remove']); }
+                rows.push({ id: a.id, src: a, icon: SRC_ICON[t], label: a.name || a.user || 'Source', on: on,
+                    help: a.note || (SRC_TITLE[t] + (a.big ? ' · ' + (a.groups || []).length + ' of ' + (a.ngroups || '?') + ' groups' : '')), status: on ? 'Active' : '', acts: acts });
             });
+            rows.push({ id: '+', label: 'Add a source', help: 'An Xtream login, an M3U playlist or a portal.', btn: true, plus: true });
             return rows;
         }
         if (s === 'subs') {
             var oa = Subs.account(), left = Subs.left();
-            return [{ id: 'osub', label: oa && oa.key ? 'OpenSubtitles \u00b7 ' + (oa.user || 'key only') : 'Sign in to OpenSubtitles', note: oa && oa.key ? (left != null ? left + ' downloads left today' : 'Signed in') : '', action2: true }];
+            if (oa && oa.key) return [{ id: 'osub', label: 'Signed in as ' + (oa.user || 'API key only') + (left != null ? ' · ' + left + ' downloads left today' : ''), help: 'Subtitles for any film or episode, in the CC menu.', acts: [['change', 'Change account']] }];
+            return [{ id: 'osub', label: 'API key, username and password', help: 'Create the key on opensubtitles.com, profile, API consumers.', acts: [['change', 'Check and save']] }];
         }
-        if (s === 'countries') return ALL_CC.map(function (c) { return { id: c[0], label: c[1], on: S.countries.indexOf(c[0]) >= 0 }; });
+        if (s === 'countries') return [{ id: 'cc', label: 'Countries on Live and Home', help: 'OK adds or removes a country. At least one stays on.',
+            chips: ALL_CC.map(function (c) { return { id: c[0], label: c[1], on: S.countries.indexOf(c[0]) >= 0 }; }) }];
         if (s === 'clear') return [
-            { id: 'favs', label: 'Favourite channels', note: U.favs().length + ' channels', action: true },
-            { id: 'continue', label: 'Continue watching', note: U.continueList().length + ' titles', action: true },
-            { id: 'mylist', label: 'My List', note: U.myList().length + ' titles', action: true }];
-        return [{ id: 'v', label: 'Nexus TV', note: 'Version 1.1', info: true }, { id: 'acc', label: 'Source', note: U.accounts.active().name || 'Signed in', info: true }];
+            { id: 'favs', label: 'Favourite channels', help: U.favs().length + (U.favs().length === 1 ? ' channel' : ' channels') + ' on this TV', acts: [['clear', 'Clear']] },
+            { id: 'continue', label: 'Continue watching', help: U.continueList().length + (U.continueList().length === 1 ? ' title' : ' titles') + ' on this TV', acts: [['clear', 'Clear']] },
+            { id: 'mylist', label: 'My List', help: U.myList().length + (U.myList().length === 1 ? ' title' : ' titles') + ' on this TV', acts: [['clear', 'Clear']] }];
+        return [{ id: 'v', label: 'Nexus TV', help: 'Samsung Frame', value: 'Version 1.1' }, { id: 'acc', label: 'Source', help: 'The active source', value: U.accounts.active().name || 'Signed in' }];
+    }
+    // the page: section heading (.rowtitle), help line, then its rows in one rounded box
+    function layout() {
+        var y = TOP, out = [];
+        for (var i = 0; i < SECTIONS.length; i++) {
+            var it = items(i), top = y;
+            y += HEAD + (SECTIONS[i].hint ? 34 : 0);
+            out.push({ head: top, box: y, it: it });
+            y += it.length * ROW_H + GAP;
+        }
+        out.end = y;
+        return out;
+    }
+    function controls(x, f) {
+        var h = '', r = 24;
+        if (x.acts) for (var a = x.acts.length - 1; a >= 0; a--) {
+            var w = 34 + x.acts[a][1].length * 13;
+            h += '<span class="sb' + (x.acts[a][0] === 'remove' || x.acts[a][0] === 'clear' ? ' red' : '') + (f && act === a ? ' sel' : '') + '" style="right:' + r + 'px;width:' + w + 'px">' + U.esc(x.acts[a][1]) + '</span>';
+            r += w + 12;
+        }
+        if (x.status) h += '<span class="sv on" style="right:' + r + 'px">' + U.esc(x.status) + '</span>';
+        if (x.chips) for (var c = x.chips.length - 1; c >= 0; c--) {
+            var cw = 50 + x.chips[c].label.length * 13;
+            h += '<span class="sb chip' + (x.chips[c].on ? ' on' : '') + (f && act === c ? ' sel' : '') + '" style="right:' + r + 'px;width:' + cw + 'px">' + (x.chips[c].on ? '&#10003; ' : '') + U.esc(x.chips[c].label) + '</span>';
+            r += cw + 12;
+        }
+        if (x.value !== undefined) h += '<span class="sv" style="right:' + r + 'px">' + U.esc(x.value) + '</span>';
+        if (x.on !== undefined && !x.acts && !(editing && x.move)) h += '<span class="tg' + (x.on ? ' on' : '') + '">' + (x.fixed ? 'Always on' : x.on ? 'On' : 'Off') + '</span>';
+        if (x.btn) h += '<span class="sv chev">&#8250;</span>';
+        return h;
     }
     function draw() {
-        var h = '';
-        for (var i = 0; i < SECTIONS.length; i++)
-            h += '<div class="li' + (i === sec ? (active && col === 0 ? ' focus' : ' on') : '') + '" style="top:' + (i * 58) + 'px;width:364px">' + SECTIONS[i].title + '</div>';
-        U.$('stSec').innerHTML = h;
-        var it = items(), r = '';
-        for (var j = 0; j < it.length; j++) {
-            var x = it[j], f = active && col === 1 && j === item;
-            var right = x.action2 ? '' : x.info2 ? '<span class="sv" style="right:22px' + (x.on ? ';color:#34C759;font-weight:700' : '') + '">' + U.esc(x.note) + '</span>' : x.action ? '<span class="sv">' + U.esc(x.note) + '</span><span class="tg act">Clear</span>'
-                : x.info ? '<span class="sv">' + U.esc(x.note) + '</span>'
-                : editing && x.move ? ''
-                : '<span class="tg' + (x.on ? ' on' : '') + '">' + (x.fixed ? 'Always on' : x.on ? 'On' : 'Off') + '</span>';
-            r += '<div class="srow' + (f ? ' focus' : '') + (f && moving ? ' moving' : '') + (x.on === false ? ' off' : '') + '" style="top:' + (j * 74) + 'px">' +
-                (x.move ? '<span class="mv">' + (f && moving ? '&#8597;' : '&#8801;') + '</span>' : '') + '<span class="sl">' + U.esc(x.label) + '</span>' + right + '</div>';
+        var L = layout(), h = '';
+        // keep the focused row between the title and the bottom; the first section keeps the page at the top
+        var fy = L[sec] ? L[sec].box + item * ROW_H : TOP;
+        if (sec === 0 && item < 2) shift = 0;
+        else { if (fy - shift < TOP + 40) shift = fy - TOP - 40; if (fy + ROW_H - shift > BOTTOM) shift = fy + ROW_H - BOTTOM; }
+        shift = Math.max(0, Math.min(shift, Math.max(0, L.end - 1040)));
+        for (var i = 0; i < SECTIONS.length; i++) {
+            var P = L[i], boxH = P.it.length * ROW_H;
+            if (P.box + boxH - shift < 120 || P.head - shift > 1080) continue;     // only what is on screen
+            h += '<div class="rowtitle" style="left:' + X0 + 'px;top:' + (P.head - shift) + 'px">' + U.esc(SECTIONS[i].title) + '</div>';
+            if (SECTIONS[i].hint) h += '<div class="sthint" style="left:' + X0 + 'px;top:' + (P.head + 42 - shift) + 'px">' + U.esc(SECTIONS[i].hint) + '</div>';
+            h += '<div class="stbox" style="left:' + X0 + 'px;top:' + (P.box - shift) + 'px;width:' + W + 'px;height:' + boxH + 'px"></div>';
+            for (var j = 0; j < P.it.length; j++) {
+                var x = P.it[j], y = P.box + j * ROW_H - shift, f = active && i === sec && j === item;
+                if (y + ROW_H < 120 || y > 1080) continue;
+                var lx = 30 + (x.move ? 48 : 0) + (x.icon ? 62 : 0);
+                h += '<div class="srow strow' + (f ? ' focus' : '') + (f && moving ? ' moving' : '') + (x.on === false && x.move ? ' off' : '') + (j ? ' sep' : '') + '" style="left:' + X0 + 'px;top:' + y + 'px;width:' + W + 'px">' +
+                    (x.move ? '<span class="mv">' + (f && moving ? '&#8597;' : '&#8801;') + '</span>' : '') +
+                    (x.icon ? '<span class="sic' + (x.on ? ' on' : '') + '">' + x.icon + '</span>' : '') +
+                    (x.plus ? '<span class="sic">+</span>' : '') +
+                    '<span class="sl" style="left:' + (lx + (x.plus ? 62 : 0)) + 'px">' + U.esc(x.label) + '</span>' +
+                    (x.help ? '<span class="sh" style="left:' + (lx + (x.plus ? 62 : 0)) + 'px">' + U.esc(x.help) + '</span>' : '') + controls(x, f) + '</div>';
+            }
         }
-        U.$('stItems').innerHTML = r;
-        U.$('stTitle').textContent = SECTIONS[sec].title + (editing ? ' · editing order' : '');
-        U.$('stHint').textContent = editing ? (moving ? 'Up and Down move the row. OK drops it.' : 'OK picks up a row. Back or Done finishes.') : SECTIONS[sec].hint;
+        U.$('stItems').innerHTML = h;
+        U.$('stTop').style.opacity = shift > 40 ? '1' : '0';
     }
     function changed(what) { save(); App.applySettings(what); }
     function toggle() {
-        var s = SECTIONS[sec].id, it = items()[item]; if (!it) return;
+        var s = SECTIONS[sec].id, it = items(sec)[item]; if (!it) return;
+        var a = it.acts ? it.acts[act] : null;
         if (it.edit) { editing = !editing; moving = false; draw(); return; }
-        if (editing) { moving = !moving; draw(); return; }      // pick up / drop the row
+        if (editing && it.move) { moving = !moving; draw(); return; }      // pick up / drop the row
         if (s === 'tabs' && !it.fixed) { flip(S.hideTabs, it.id); changed('tabs'); }
         else if (s === 'rows') { flip(S.hideRows, it.id); changed('rows'); }
         else if (s === 'countries') {
-            var i = S.countries.indexOf(it.id);
+            var cid = it.chips[act].id, i = S.countries.indexOf(cid);
             if (i >= 0) { if (S.countries.length > 1) S.countries.splice(i, 1); else { U.toast('Keep at least one country'); return; } }
-            else { S.countries = ids(ALL_CC).filter(function (c) { return c === it.id || S.countries.indexOf(c) >= 0; }); }
+            else { S.countries = ids(ALL_CC).filter(function (c) { return c === cid || S.countries.indexOf(c) >= 0; }); }
             changed('countries');
         } else if (s === 'clear') { U.clearList(it.id); changed('rows'); }
         else if (s === 'channels') {
@@ -120,17 +180,18 @@ var Settings = (function () {
         } else if (s === 'subs') { SubsForm.open(); return;
         } else if (s === 'accounts') {
             if (it.id === '+') { Onboard.open({ add: true }); return; }
-            if (String(it.id).indexOf('g:') === 0) {      // pick the groups of a very large playlist again
-                var acc = null; U.accounts.list().forEach(function (a) { if ('g:' + a.id === it.id) acc = a; });
-                if (!acc || acc.id !== U.accounts.active().id) { U.toast('Switch to this source first'); return; }
+            if (!a) { U.toast(it.on ? 'Already active' : ''); return; }
+            if (a[0] === 'groups') {      // pick the groups of a very large playlist again
+                var acc = it.src;
+                if (acc.id !== U.accounts.active().id) { U.toast('Switch to this source first'); return; }
                 Src.repick(acc, function (e, info) {
                     if (e) { if (e.message !== 'cancelled') U.toast('Could not read the playlist'); draw(); return; }
-                    acc.groups = info.groups; acc.ngroups = info.groupCount; U.accounts.persist(); U.toast('Saved. Reloading\u2026');
+                    acc.groups = info.groups; acc.ngroups = info.groupCount; U.accounts.persist(); U.toast('Saved. Reloading…');
                     setTimeout(function () { location.reload(); }, 700);
                 });
                 return;
             }
-            if (it.on) { U.toast('Already active'); return; }
+            if (a[0] === 'remove') { if (U.accounts.remove(it.id)) { U.toast('Source removed'); act = 0; } else U.toast('Switch to another source first'); draw(); return; }
             U.toast('Switching source…'); setTimeout(function () { U.accounts.use(it.id); }, 400);
         }
         draw();
@@ -144,49 +205,44 @@ var Settings = (function () {
         var t = list[at]; list[at] = list[j]; list[j] = t; item = j + 1;
         changed(s); draw();
     }
+    function width(it) { return it ? (it.chips ? it.chips.length : it.acts ? it.acts.length : 0) : 0; }
+    function go(si, ii) { if (editing && si !== sec) { editing = moving = false; } sec = si; item = ii; act = 0; draw(); }
     function key(c) {
         if (Picker.isOpen()) return Picker.key(c);
         if (ChannelPicker.isOpen()) return ChannelPicker.key(c);
         if (SubsForm.isOpen()) return SubsForm.key(c);
-        if (col === 0) {
-            if (c === 38) { if (sec > 0) { sec--; item = 0; editing = moving = false; draw(); } else return 'up'; }
-            else if (c === 40 && sec < SECTIONS.length - 1) { sec++; item = 0; editing = moving = false; draw(); }
-            else if (c === 39 || c === 13) { col = 1; item = 0; draw(); }
-            return true;
-        }
-        var n = items().length;
         if (moving) {                                   // reorder mode: Up/Down carry the item, OK drops it
             if (c === 38) move(-1);
             else if (c === 40) move(1);
             else if (c === 13) { moving = false; draw(); }
             return true;
         }
-        if (c === 38) { if (item > 0) { item--; draw(); } else return 'up'; }
-        else if (c === 40 && item < n - 1) { item++; draw(); }
+        var n = items(sec).length, it = items(sec)[item];
+        if (c === 38) {
+            if (item > 0) go(sec, item - 1);
+            else if (sec > 0) go(sec - 1, items(sec - 1).length - 1);
+            else return 'up';
+        } else if (c === 40) {
+            if (item < n - 1) go(sec, item + 1);
+            else if (sec < SECTIONS.length - 1) go(sec + 1, 0);
+        } else if (c === 37) { if (act > 0) { act--; draw(); } }
+        else if (c === 39) { if (act < width(it) - 1) { act++; draw(); } }
         else if (c === 13) toggle();
-        else if (c === 37) { if (editing) { editing = false; } col = 0; draw(); }
         return true;
     }
-    function back() { if (Picker.isOpen()) { Picker.close(); return true; } if (ChannelPicker.isOpen()) { ChannelPicker.close(); return true; } if (SubsForm.isOpen()) { SubsForm.close(); return true; } if (moving) { moving = false; draw(); return true; } if (editing) { editing = false; draw(); return true; } if (col === 1) { col = 0; draw(); return true; } return false; }
+    function back() { if (Picker.isOpen()) { Picker.close(); return true; } if (ChannelPicker.isOpen()) { ChannelPicker.close(); return true; } if (SubsForm.isOpen()) { SubsForm.close(); return true; } if (moving) { moving = false; draw(); return true; } if (editing) { editing = false; draw(); return true; } return false; }
     function longPress() {
         var s = SECTIONS[sec].id;
-        if (active && col === 1 && s === 'accounts') {
-            var it = items()[item];
-            if (it && it.id !== '+' && String(it.id).indexOf('g:') !== 0) { if (U.accounts.remove(it.id)) { U.toast('Source removed'); item = Math.max(0, item - 1); draw(); } else U.toast('Switch to another source first'); }
-            return true;
-        }
-        if (!active || col !== 1 || (s !== 'tabs' && s !== 'rows')) return false;
-        if (item === 0) return false;
+        if (!active || (s !== 'tabs' && s !== 'rows') || item === 0) return false;
         editing = true; moving = true; draw(); return true;
     }
     function init() {
         sections();
         el = U.$('settings');
-        el.innerHTML = '<div class="glass" style="left:112px;top:150px;width:400px;height:840px">' +
-            '<div class="sect" style="left:32px;top:30px">Settings</div><div class="abs" id="stSec" style="left:18px;top:66px;width:364px;height:700px"></div></div>' +
-            '<div class="rowtitle" id="stTitle" style="left:560px;top:166px"></div>' +
-            '<div class="abs" id="stHint" style="left:560px;top:212px;font-size:22px;color:rgba(255,255,255,.5)"></div>' +
-            '<div class="abs" id="stItems" style="left:560px;top:270px;width:900px;height:760px"></div>' +
+        el.innerHTML = '<div class="abs" id="stItems" style="left:0;top:0;width:1920px;height:1080px"></div>' +
+            '<div class="abs" id="stTop" style="left:0;top:0;width:1920px;height:226px;opacity:0;z-index:5;-webkit-transform:translateZ(0);transform:translateZ(0);' +
+            'background:-webkit-linear-gradient(top,#000 82%,rgba(0,0,0,0));background:linear-gradient(180deg,#000 82%,rgba(0,0,0,0))"></div>' +
+            '<div class="rowtitle" style="left:' + X0 + 'px;top:166px;z-index:6">Settings</div>' +
             '<div class="overlay" id="stOver"></div>';
     }
     return {

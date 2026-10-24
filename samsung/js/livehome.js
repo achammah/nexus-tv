@@ -149,7 +149,7 @@ var LiveHome = (function () {
     function build() {
         built = true;
         // same title and headings as Films and Series: "Live  N countries" at 166, shelves from 226
-        var h = '<div class="rowtitle" style="left:' + X0 + 'px;top:166px">Live<span>' + (pinned.length + all.length) + ' countries</span></div>', y = 226;
+        var h = '<div class="pill lvpill" id="lvPill">' + pillHtml() + '</div><div class="rowtitle" style="left:' + X0 + 'px;top:166px">Live<span>' + (pinned.length + all.length) + ' countries</span></div>', y = 226;
         if (pinned.length) {
             h += sectHead(y, 'Pinned', 'your countries · change in Settings'); Y.pin = y + 50;
             y = Y.pin + Math.ceil(pinned.length / 2) * (P_H + P_VGAP) - P_VGAP + 46;
@@ -187,7 +187,7 @@ var LiveHome = (function () {
     function drawChips() {
         if (!all.length) return;
         var rowH = A_H + A_VGAP, r0 = Math.max(0, Math.floor((shift - Y.all) / rowH) - 1), r1 = Math.floor((shift + 1080 - Y.all) / rowH) + 1;
-        var a = Math.max(0, r0 * A_COLS), b = Math.min(all.length, (r1 + 1) * A_COLS), f = active && sec === 2 ? idx[2] : -1, win = a + ':' + b + ':' + f;
+        var a = Math.max(0, r0 * A_COLS), b = Math.min(all.length, (r1 + 1) * A_COLS), f = active && !onPill && sec === 2 ? idx[2] : -1, win = a + ':' + b + ':' + f;
         if (win === chipWin) return;
         chipWin = win;
         var h = '';
@@ -201,7 +201,8 @@ var LiveHome = (function () {
     function paint() {
         if (!built) return;
         if (!secLen(sec) && firstSec() >= 0 && active && sec < firstSec()) sec = firstSec();
-        var f = active && secLen(sec) ? pos(sec, idx[sec]) : null;
+        var f = active && !onPill && secLen(sec) ? pos(sec, idx[sec]) : null;
+        var pl = U.$('lvPill'); if (pl) { pl.className = 'pill lvpill' + (active && onPill ? ' focus' : ''); }
         // vertical: the first pinned row keeps the title in view; otherwise the focused card stays between TOP and BOTTOM
         if (f) {
             if (sec === firstSec() && (sec !== 0 || idx[0] < 2)) shift = 0;
@@ -222,9 +223,9 @@ var LiveHome = (function () {
                 rShift = Math.max(0, rShift);
             }
             U.setT(U.$('lvRegRow'), -rShift, 0);
-            for (var r = 0; r < regions.length; r++) U.$('lvr' + r).className = 'lvc reg' + (active && sec === 1 && idx[1] === r ? ' focus' : '');
+            for (var r = 0; r < regions.length; r++) U.$('lvr' + r).className = 'lvc reg' + (active && !onPill && sec === 1 && idx[1] === r ? ' focus' : '');
         }
-        for (var i = 0; i < pinned.length; i++) U.$('lvp' + i).className = 'lvc pin' + (active && sec === 0 && idx[0] === i ? ' focus' : '');
+        for (var i = 0; i < pinned.length; i++) U.$('lvp' + i).className = 'lvc pin' + (active && !onPill && sec === 0 && idx[0] === i ? ' focus' : '');
         drawChips();
     }
 
@@ -250,18 +251,47 @@ var LiveHome = (function () {
     function open() {
         if (sec === 0) { openPinned(pinned[idx[0]].i); return; }
         var e = sec === 1 ? regions[idx[1]] : all[idx[2]];
-        Guide.openCode(e.code.toLowerCase(), e.name);
-        App.show('guide', null, true); Guide.focus();
+        LiveCountry.open({ cc: e.code.toLowerCase(), name: e.name, pin: -1 });
     }
     function openPinned(i) {
         if (App.tabs) for (var t = 0; t < App.tabs.length; t++) if (App.tabs[t].id === 'guide') { App.goTab(t, true); break; }
-        Guide.openCountry(i);
-        App.show('guide', null, true); Guide.focus();
+        LiveCountry.open({ cc: pinned[i] ? pinned[i].cc : Data.COUNTRIES[i][0], name: pinned[i] ? pinned[i].name : Data.COUNTRIES[i][1], pin: i });
+    }
+    // ---------- the two views: Categories (this page) or Full list (the guide with a row of countries) ----------
+    var VIEW_KEY = 'nx_live_view', onPill = false;
+    function view() { try { return localStorage.getItem(VIEW_KEY) === 'full' ? 'full' : 'cat'; } catch (e) { return 'cat'; } }
+    function pillHtml() { var v = view(); return '<span' + (v === 'cat' ? ' class="on"' : '') + '>Categories</span><span' + (v === 'full' ? ' class="on"' : '') + '>Full list</span>'; }
+    function setView(v) {
+        try { localStorage.setItem(VIEW_KEY, v); } catch (e) { /* storage blocked */ }
+        onPill = v === 'cat';
+        if (App.tabs) for (var t = 0; t < App.tabs.length; t++) if (App.tabs[t].id === 'guide') { App.goTab(t, true); break; }
+        var pl = U.$('lvPill'); if (pl) pl.innerHTML = pillHtml();
+    }
+    // the countries of the full list: pinned first, then every other country of the source A to Z, then the regions
+    function fullList(cb) {
+        var out = [], pin = {};
+        for (var i = 0; i < Data.COUNTRIES.length; i++) { var c = Data.COUNTRIES[i]; out.push([c[0], c[0] === 'all' ? c[1] : countryName(c[0].toUpperCase())]); pin[c[0].toUpperCase()] = 1; }
+        if (U.accounts.type() !== 'x') { cb(out); return; }
+        Data.categories('live', function (list) {
+            var seen = {}, more = [], regs = [];
+            (list || []).forEach(function (x) {
+                var m = CODE.exec(x.name || ''); if (!m || /REPLAY/i.test(x.name) || pin[m[1]] || seen[m[1]] || m[1] === 'OTHER') return;
+                seen[m[1]] = 1; (REGION_OF[m[1]] ? regs : more).push([m[1].toLowerCase(), countryName(m[1])]);
+            });
+            more.sort(function (a, b) { return a[1].toLowerCase() < b[1].toLowerCase() ? -1 : a[1].toLowerCase() > b[1].toLowerCase() ? 1 : 0; });
+            cb(out.concat(more, regs));
+        });
     }
     function key(c) {
+        if (onPill) {
+            if (c === 40) { onPill = false; paint(); }
+            else if (c === 38) { onPill = false; paint(); return 'up'; }
+            else if (c === 13 || c === 37 || c === 39) setView(view() === 'cat' ? 'full' : 'cat');
+            return true;
+        }
         if (!secLen(sec) && firstSec() >= 0) sec = firstSec();
         var n = secLen(sec);
-        if (!n) return c === 38 ? 'up' : true;
+        if (!n) { if (c === 38) { onPill = true; paint(); } return true; }
         var cols = sec === 0 ? 2 : sec === 1 ? n : A_COLS, i = idx[sec];
         if (c === 13) { open(); return true; }
         if (c === 37) { if (i % cols > 0 || (sec === 1 && i > 0)) { idx[sec]--; paint(); } return true; }
@@ -269,7 +299,7 @@ var LiveHome = (function () {
         if (c === 38) {
             if (sec !== 1 && i - cols >= 0) { idx[sec] -= cols; paint(); return true; }
             var up = nextSec(sec, -1);
-            if (up < 0) return 'up';
+            if (up < 0) { onPill = true; paint(); return true; }   // the view pill, then the menu
             goSec(up, false); return true;
         }
         if (c === 40) {
@@ -302,7 +332,7 @@ var LiveHome = (function () {
         page = U.$('lvPage');
     }
     return {
-        init: init, key: key, show: show, openPinned: openPinned,
+        init: init, key: key, show: show, openPinned: openPinned, view: view, setView: setView, fullList: fullList,
         focus: function () { active = true; if (!secLen(sec) && firstSec() >= 0) sec = firstSec(); paint(); },
         blur: function () { active = false; paint(); },
         refresh: function () { paint(); }

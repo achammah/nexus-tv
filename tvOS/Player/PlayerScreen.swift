@@ -48,6 +48,7 @@ struct PlayerScreen: View {
     @State private var lastSave = Date.distantPast
     @State private var attempts = 0
     @State private var reconnecting = false
+    @State private var busy = false             // the account's only stream is used by another device
     @State private var retryPending = false    // a reopen is scheduled: further trouble waits for it
     @State private var backgrounded = false
     @Environment(\.scenePhase) private var phase
@@ -76,7 +77,13 @@ struct PlayerScreen: View {
             .onMoveCommand { d in move(d) }
             .onTapGesture { select() }
             if !vlc.started && !vlc.failed && !reconnecting { loadingCard }
-            if reconnecting {
+            if busy {
+                VStack(spacing: 10) {
+                    HStack(spacing: 14) { Spinner().scaleEffect(0.6).frame(width: 30, height: 30); Text("Your account is in use on another device").font(.ui(30, .semibold)) }
+                    Text("Nexus TV starts as soon as it is free").font(.ui(24)).foregroundStyle(.white.opacity(0.65))
+                }
+                .padding(.horizontal, 40).padding(.vertical, 26).background(RoundedRectangle(cornerRadius: 24).fill(Color.black.opacity(0.75)))
+            } else if reconnecting {
                 HStack(spacing: 14) { Spinner().scaleEffect(0.6).frame(width: 30, height: 30); Text("Reconnecting…  \(attempts)/5").font(.ui(24, .semibold)) }
                     .padding(.horizontal, 26).padding(.vertical, 16)
                     .background(Capsule().fill(Color.black.opacity(0.75)))
@@ -594,9 +601,20 @@ struct PlayerScreen: View {
         let at = isLive ? 0 : max(vlc.timeMs, request.startMs)
         saveResume()
         vlc.stop()
-        let delay = UInt64(1 << (attempts - 1))
+        // live: at least 3 s, or the provider still counts the old stream and refuses the new one
+        let delay = UInt64(isLive ? max(3, 1 << (attempts - 1)) : 1 << (attempts - 1))
         Task {
             try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            if await catalog.accountFull() == true {
+                busy = true; attempts = max(0, attempts - 1)
+                var free = false
+                for _ in 0..<24 where reconnecting && !backgrounded {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    if await catalog.accountFull() != true { free = true; break }
+                }
+                busy = false
+                if !free { reconnecting = false; retryPending = false; vlc.failed = true; user.show("Still in use on another device. Try again later."); return }
+            }
             retryPending = false     // a reopen that fails again counts as the next attempt
             guard reconnecting, !backgrounded else { return }
             Metrics.shared.mark("player.reconnect \(attempts)")
@@ -611,6 +629,7 @@ struct PlayerScreen: View {
         autoSync?.stop()     // a new stream: its own reference
         if onlineFor != request.item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] }
         else { onlineTrack = nil }      // a reopened stream: the remembered choice adds the file again
+        vlc.preferredAudio = user.trackPref(request.item)?.audioLang
         vlc.play(url, startMs: request.startMs, live: isLive)
         if !isLive { user.setResume(request.item, posMs: request.startMs, durMs: 0) }   // in Continue watching from the start
         lastSave = Date()

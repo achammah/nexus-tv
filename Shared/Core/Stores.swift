@@ -112,11 +112,24 @@ final class UserStore: ObservableObject {
 
     // Audio and subtitle choice, per film and per series (every episode): language first, track position as fallback
     private var trackPrefs: [String: TrackPref] = loadJSON("nx.tracks", [:])
-    func trackPref(_ it: MediaItem) -> TrackPref? { trackPrefs[subsKey(it)] }
+    /// A title's own choice first; a title never set takes the last language picked anywhere (language only,
+    /// since track positions differ from file to file).
+    func trackPref(_ it: MediaItem) -> TrackPref? {
+        let own = trackPrefs[subsKey(it)], last = trackPrefs["*"]
+        guard let last else { return own }
+        var p = own ?? TrackPref()
+        if p.audioLang == nil, p.audioPos == nil { p.audioLang = last.audioLang }
+        if p.subLang == nil, p.subPos == nil, p.subOff == nil, p.subOnline == nil { p.subLang = last.subLang; p.subOff = last.subOff; p.subOnline = last.subOnline }
+        return p
+    }
     func setTrackPref(_ it: MediaItem, _ change: (inout TrackPref) -> Void) {
         var p = trackPrefs[subsKey(it)] ?? TrackPref()
         change(&p)
         trackPrefs[subsKey(it)] = p
+        var g = trackPrefs["*"] ?? TrackPref()
+        if let a = p.audioLang { g.audioLang = a }
+        if p.subLang != nil || p.subOff != nil || p.subOnline != nil { g.subLang = p.subLang; g.subOff = p.subOff; g.subOnline = p.subOnline }
+        trackPrefs["*"] = g
         saveJSON("nx.tracks", trackPrefs)
     }
 
