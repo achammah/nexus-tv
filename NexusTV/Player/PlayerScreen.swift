@@ -80,6 +80,23 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     func setAudio(_ i: Int) { player.currentAudioTrackIndex = Int32(i) }
     func setSubtitle(_ i: Int) { player.currentVideoSubTitleIndex = Int32(i) }
 
+    /// The audio format of a track ("AC3", "AAC"…), from the file's track list; nil when VLC does not say.
+    func audioFormat(_ id: Int) -> String? {
+        let info = player.media?.tracksInformation as? [[String: Any]] ?? []
+        for t in info where (t[VLCMediaTracksInformationType] as? String) == VLCMediaTracksInformationTypeAudio {
+            guard (t[VLCMediaTracksInformationId] as? NSNumber)?.intValue == id, let c = (t[VLCMediaTracksInformationCodec] as? NSNumber)?.uint32Value else { continue }
+            return Self.formatName(c)
+        }
+        return nil
+    }
+    static func formatName(_ fourcc: UInt32) -> String {
+        let b = [24, 16, 8, 0].map { UInt8((fourcc >> UInt32($0)) & 0xff) }
+        let raw = String(bytes: b.reversed(), encoding: .ascii)?.trimmingCharacters(in: .whitespaces).lowercased() ?? ""
+        let names = ["a52": "AC3", "eac3": "E-AC3", "mp4a": "AAC", "mpga": "MP3", "mp3": "MP3", "dts": "DTS", "dtsh": "DTS-HD",
+                     "mlp": "TrueHD", "trhd": "TrueHD", "opus": "Opus", "flac": "FLAC", "vorb": "Vorbis", "araw": "PCM", "lpcm": "PCM"]
+        return names[raw] ?? raw.uppercased()
+    }
+
     func mediaPlayerStateChanged(_ aNotification: Notification) {
         DispatchQueue.main.async { [self] in
             switch player.state {
@@ -147,6 +164,12 @@ struct PlayerScreen: View {
     @FocusState private var rootFocus: Bool
     @FocusState private var controlFocus: String?
     @FocusState private var trackFocus: Int?
+    // next-episode card: 40 s before the end of an episode longer than 80 s, 10 s countdown, once per playback
+    @State private var upLeft = 0
+    @State private var upDone = false
+    @State private var upTask: Task<Void, Never>?
+    @FocusState private var upFocus: Bool
+    static let upAtMs = 40_000, upCount = 10
 
     enum TrackKind { case audio, subtitles }
     private var isLive: Bool { request.item.kind == .live }
@@ -158,7 +181,7 @@ struct PlayerScreen: View {
                 Color.black
                 VLCVideoView(controller: vlc)
             }
-            .focusable(!controls && picker == nil)
+            .focusable(!controls && picker == nil && upLeft == 0)
             .focused($rootFocus)
             .onMoveCommand { d in move(d) }
             .onTapGesture { select() }
@@ -175,6 +198,7 @@ struct PlayerScreen: View {
                     .animation(.easeOut(duration: 0.2), value: infoVisible)
             }
             if let picker { trackPanel(picker) }
+            if upLeft > 0, let n = request.next.first { upNextCard(n) }
             if let t = toaster.text {
                 Toast(text: t).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 80).allowsHitTesting(false)
             }
@@ -213,7 +237,7 @@ struct PlayerScreen: View {
                 start()
             }
         }
-        .onChange(of: vlc.timeMs) { _, _ in periodicSave() }
+        .onChange(of: vlc.timeMs) { _, _ in periodicSave(); upCheck() }
         .onChange(of: controlFocus) { _, _ in if controls { showInfo(long: true) } }
     }
 
@@ -244,6 +268,7 @@ struct PlayerScreen: View {
     }
 
     private func back() {
+        if upLeft > 0 { upHide(); rootFocus = true; return }      // keep watching
         if let p = picker { picker = nil; controlFocus = p == .audio ? "audio" : "subs"; return }
         if let _ = scrubMs { cancelScrub(); return }
         if controls { controls = false; rootFocus = true; showInfo(); return }
@@ -326,6 +351,7 @@ struct PlayerScreen: View {
                         if vlc.paused && !isLive { Image(systemName: "pause.fill").font(.ui(24)) }
                     }
                 }
+                if controls && !isLive && !request.next.isEmpty { nextButton.disabled(picker != nil) }
                 if !isLive { timeline.padding(.top, 14) }
                 if controls && !isLive { controlBar.padding(.top, 22).disabled(picker != nil) }   // the open panel holds focus
             }
@@ -372,25 +398,33 @@ struct PlayerScreen: View {
         }
     }
 
+    /// Apple TV style: icons only (each still has a spoken name for VoiceOver and tests).
     private var controlBar: some View {
         HStack(spacing: 14) {
-            Button { vlc.seek(toMs: vlc.timeMs - 10_000) } label: { Label("10 s", systemImage: "gobackward.10") }
-                .focused($controlFocus, equals: "back")
-            Button { vlc.toggle() } label: { Image(systemName: vlc.paused ? "play.fill" : "pause.fill").frame(width: 34) }
-                .focused($controlFocus, equals: "play")
-            Button { vlc.seek(toMs: vlc.timeMs + 10_000) } label: { Label("10 s", systemImage: "goforward.10") }
-                .focused($controlFocus, equals: "fwd")
-            Button { openPicker(.audio) } label: { Label("Audio", systemImage: "speaker.wave.2") }
-                .focused($controlFocus, equals: "audio")
-            Button { openPicker(.subtitles) } label: { Label("Subtitles", systemImage: "captions.bubble") }
-                .focused($controlFocus, equals: "subs")
-            if !request.next.isEmpty {
-                Button { playNext() } label: { Label("Next episode", systemImage: "forward.end.fill") }
-                    .focused($controlFocus, equals: "next")
-            }
+            iconButton("gobackward.10", "Back 10 seconds", "back") { vlc.seek(toMs: vlc.timeMs - 10_000) }
+            iconButton(vlc.paused ? "play.fill" : "pause.fill", vlc.paused ? "Play" : "Pause", "play") { vlc.toggle() }
+            iconButton("goforward.10", "Forward 10 seconds", "fwd") { vlc.seek(toMs: vlc.timeMs + 10_000) }
+            iconButton("speaker.wave.2.fill", "Audio", "audio") { openPicker(.audio) }
+            iconButton("captions.bubble", "Subtitles", "subs") { openPicker(.subtitles) }
         }
-        .buttonStyle(PillButtonStyle(height: 56, font: 21, hPad: 22))
         .focusSection()
+    }
+
+    private func iconButton(_ icon: String, _ name: String, _ id: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon).font(.ui(26, .semibold)).frame(width: 40) }
+            .buttonStyle(PillButtonStyle(height: 64, font: 26, hPad: 18))
+            .focused($controlFocus, equals: id)
+            .accessibilityLabel(name)
+    }
+
+    /// Next episode: an icon on the right, just above the timeline; Up from the control bar reaches it.
+    private var nextButton: some View {
+        HStack {
+            Spacer(minLength: 0)
+            iconButton("forward.end.fill", "Next episode", "next") { playNext() }
+        }
+        .frame(maxWidth: .infinity)
+        .focusSection()        // full width: Up from any button of the bar lands here
     }
 
     private func openPicker(_ k: TrackKind) {
@@ -416,7 +450,7 @@ struct PlayerScreen: View {
                         } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: "checkmark").opacity(t.0 == current ? 1 : 0).frame(width: 26)
-                                Text(t.0 < 0 ? "Off" : Self.label(t, in: list))
+                                Text(t.0 < 0 ? "Off" : (k == .audio ? audioLabel(t, in: list) : Self.label(t, in: list)))
                             }
                             .frame(width: 420, alignment: .leading)
                         }
@@ -442,6 +476,14 @@ struct PlayerScreen: View {
 
     /// VLC names tracks like "Track 1 - [English]"; keep the language when there is one.
     /// A track's name in the panel; two tracks with the same language get their number ("English 2").
+    /// Audio: language and format ("English · AC3"), numbered when two tracks read the same.
+    private func audioLabel(_ t: (Int, String), in list: [(Int, String)]) -> String {
+        func base(_ x: (Int, String)) -> String { [Self.trackName(x.1).trimmingCharacters(in: .whitespaces), vlc.audioFormat(x.0)].compactMap { $0 }.joined(separator: " · ") }
+        let n = base(t), same = list.filter { $0.0 >= 0 && base($0).lowercased() == n.lowercased() }
+        guard same.count > 1, let i = same.firstIndex(where: { $0.0 == t.0 }) else { return n }
+        return "\(n) \(i + 1)"
+    }
+
     static func label(_ t: (Int, String), in list: [(Int, String)]) -> String {
         let n = trackName(t.1).trimmingCharacters(in: .whitespaces)
         let key = { (x: (Int, String)) in trackName(x.1).trimmingCharacters(in: .whitespaces).lowercased() }
@@ -471,10 +513,18 @@ struct PlayerScreen: View {
         Metrics.shared.mark("player.choose \(k == .audio ? "audio" : "subs")=\(lang ?? "Off") index=\(t.0)")
         if k == .audio {
             // what VLC really plays a moment later, and whether the clock still moves (audio test)
-            let want = t.0, t0 = vlc.timeMs
+            let want = t.0, t0 = vlc.timeMs, name = audioLabel(t, in: list)
             Task {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if vlc.audioIndex != want {          // one retry: VLC can refuse a change while it is still opening the track
+                    vlc.setAudio(want)
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                }
                 Metrics.shared.mark("player.audio-now index=\(vlc.audioIndex) wanted=\(want) clock+\((vlc.timeMs - t0) / 1000)s")
+                if vlc.audioIndex != want {
+                    let kept = vlc.audioTracks.first { $0.0 == vlc.audioIndex }.map { audioLabel($0, in: list) } ?? "no track"
+                    user.show("Could not switch to \(name): the player stayed on \(kept)")
+                }
             }
         }
     }
@@ -488,7 +538,14 @@ struct PlayerScreen: View {
             if let pos, real.indices.contains(pos) { return real[pos].0 }
             return nil
         }
-        if let a = pick(vlc.audioTracks, lang: p?.audioLang, pos: p?.audioPos) { vlc.setAudio(a) }
+        if let a = pick(vlc.audioTracks, lang: p?.audioLang, pos: p?.audioPos), a != vlc.audioIndex {
+            vlc.setAudio(a)
+            Task {      // checked once it had time to take; one retry
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if vlc.audioIndex != a { vlc.setAudio(a) }
+                Metrics.shared.mark("player.audio-pref index=\(vlc.audioIndex) wanted=\(a)")
+            }
+        }
         if p?.subOff ?? true { vlc.setSubtitle(-1) }
         else if let s = pick(vlc.subtitleTracks, lang: p?.subLang, pos: p?.subPos) { vlc.setSubtitle(s) }
         let an = vlc.audioTracks.first { $0.0 == vlc.audioIndex }.map { Self.trackName($0.1) } ?? "-"
@@ -520,7 +577,7 @@ struct PlayerScreen: View {
 
     private func start(again: Bool = false) {
         guard let url = catalog.url(request.item) else { vlc.failed = true; return }
-        if !again { attempts = 0; reconnecting = false }
+        if !again { attempts = 0; reconnecting = false; upDone = false }
         vlc.play(url, startMs: request.startMs, live: isLive)
         if !isLive { user.setResume(request.item, posMs: request.startMs, durMs: 0) }   // in Continue watching from the start
         lastSave = Date()
@@ -566,6 +623,7 @@ struct PlayerScreen: View {
     }
 
     private func playNext() {
+        upHide()
         guard let n = request.next.first else { return }
         saveResume()
         request.item = n
@@ -587,6 +645,47 @@ struct PlayerScreen: View {
             MediaItem(kind: .episode, id: e.id, name: "\(title) · S\(s) E\(e.num)", img: request.item.img, ext: e.ext, sub: e.title,
                       seriesId: sid, seriesName: title)
         }
+    }
+
+    // MARK: next-episode card
+
+    private func upCheck() {
+        guard !isLive, upLeft == 0, !upDone, !request.next.isEmpty, scrubMs == nil, picker == nil,
+              vlc.lengthMs > Self.upAtMs * 2, vlc.lengthMs - vlc.timeMs <= Self.upAtMs, vlc.timeMs > 0 else { return }
+        upDone = true
+        upLeft = Self.upCount
+        controls = false
+        Metrics.shared.mark("player.upnext shown")
+        DispatchQueue.main.async { upFocus = true }
+        upTask?.cancel()
+        upTask = Task {
+            while !Task.isCancelled && upLeft > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                upLeft -= 1
+            }
+            if !Task.isCancelled { playNext() }
+        }
+    }
+
+    private func upHide() { upTask?.cancel(); upTask = nil; upLeft = 0 }
+
+    private func upNextCard(_ n: MediaItem) -> some View {
+        let ep = n.name.components(separatedBy: " · ").last ?? n.name
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("NEXT EPISODE").font(.ui(20, .bold)).tracking(2).foregroundStyle(.white.opacity(0.6))
+            Text(n.sub.isEmpty ? ep : ep + " · " + n.sub).font(.ui(30, .semibold)).lineLimit(2).frame(width: 520, alignment: .leading)
+            Button { playNext() } label: { Label("Play now · \(upLeft)", systemImage: "play.fill").monospacedDigit() }
+                .buttonStyle(PillButtonStyle(height: 60, font: 24))
+                .focused($upFocus)
+            Text("Menu to keep watching").font(.ui(18)).foregroundStyle(.white.opacity(0.5))
+        }
+        .padding(30)
+        .background(RoundedRectangle(cornerRadius: 24).fill(Color(red: 20 / 255, green: 20 / 255, blue: 24 / 255).opacity(0.94)))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.stroke, lineWidth: 1))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.trailing, Theme.x0).padding(.bottom, 120)
+        .focusSection()
     }
 
     private func close() {

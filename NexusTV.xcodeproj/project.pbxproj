@@ -30,6 +30,7 @@
 		B33C8462AA4A78FF5B3E0A1C /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110072F6CF287DD789046D7C /* OnboardingView.swift */; };
 		BD4A5EF9D7435A8F706345D4 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4812C1EA942D66D79157E04F /* Account.swift */; };
 		BE5A12D90591AF4B2515EB3D /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D1BB3207FEA658E1D29B876 /* Stores.swift */; };
+		C1ECBD4B5098FEBDA19F8B18 /* PlayerParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2956217BE574C89EFC7E18E5 /* PlayerParityTests.swift */; };
 		CE447345BA29CF4834B74863 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69AD0CEADB7A0D3818FF724C /* Models.swift */; };
 		E8D048AACCF95BB82BC6EE12 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC8B298A3FABDFCD399787E /* LibraryView.swift */; };
 		ED4825C7467E31C07E1B28AE /* PlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3924751B98BAF0C798B9B2DC /* PlayerScreen.swift */; };
@@ -64,6 +65,7 @@
 		110072F6CF287DD789046D7C /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		224344077ADB876268C6680A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		28E91838662914F9328DD96A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		2956217BE574C89EFC7E18E5 /* PlayerParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerParityTests.swift; sourceTree = "<group>"; };
 		2D1BB3207FEA658E1D29B876 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
 		2EBE5D7CC765AF6F86DD5F5D /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
 		3924751B98BAF0C798B9B2DC /* PlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerScreen.swift; sourceTree = "<group>"; };
@@ -199,6 +201,7 @@
 				56688A08CE700AF7EC7F47EF /* Idle.swift */,
 				B808F55BEF372EDC590E5931 /* NavAuditTests.swift */,
 				CB14543641987908D9B0A310 /* PerfTests.swift */,
+				2956217BE574C89EFC7E18E5 /* PlayerParityTests.swift */,
 				C9F45329B337EE21EEFD4DE9 /* RemoteJourneyTests.swift */,
 				56AC4984B2E0A5834CEFCE34 /* SearchFocusTests.swift */,
 			);
@@ -333,6 +336,7 @@
 				210FFA051C8ED438260D8C06 /* Idle.swift in Sources */,
 				F4EE040F9571C62CDF508A21 /* NavAuditTests.swift in Sources */,
 				6E037A0B6238F9CB451AB62A /* PerfTests.swift in Sources */,
+				C1ECBD4B5098FEBDA19F8B18 /* PlayerParityTests.swift in Sources */,
 				6120C3FDD710ECF2DBCB9713 /* RemoteJourneyTests.swift in Sources */,
 				27E1FF156D47B4F05E08EA10 /* SearchFocusTests.swift in Sources */,
 			);

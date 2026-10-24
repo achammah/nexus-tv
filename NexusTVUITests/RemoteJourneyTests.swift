@@ -117,7 +117,7 @@ final class RemoteJourneyTests: XCTestCase {
         press(.select, wait: 2)                                // control bar
         shot("s1-episode-controls")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Next episode'")).count > 0, "Next episode button")
-        press(.right, 4, wait: 1)                              // Next episode
+        press(.up, wait: 1)                                    // Next episode: above the timeline, Up from the bar
         press(.select, wait: 20)
         press(.up, wait: 1)
         shot("s2-next-episode")
