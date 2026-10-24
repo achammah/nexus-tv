@@ -1,8 +1,8 @@
 {
   "images": [
     {
-      "filename": "front.png",
       "idiom": "tv",
+      "filename": "front.png",
       "scale": "1x"
     }
   ],

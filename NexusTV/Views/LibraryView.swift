@@ -93,12 +93,17 @@ struct PosterGrid: View {
     let w: CGFloat, h: CGFloat, gx: CGFloat, gy: CGFloat
     var topInset: CGFloat = 20
     var progress: [String: Double] = [:]
+    /// Focus this tile when `focusTick` changes (a page coming back on top).
+    var focusKey: String? = nil
+    var focusTick = 0
     let action: (MediaItem) -> Void
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(w), spacing: gx, alignment: .top), count: columns), alignment: .leading, spacing: gy) {
-                ForEach(items, id: \.key) { it in GridTile(item: it, w: w, h: h, progress: progress[it.key]) { action(it) } }
+                ForEach(items, id: \.key) { it in
+                    GridTile(item: it, w: w, h: h, progress: progress[it.key], focusMe: it.key == focusKey, focusTick: focusTick) { action(it) }
+                }
             }
             .padding(.top, topInset).padding(.bottom, 80).padding(.horizontal, 14)
         }
@@ -111,6 +116,8 @@ struct GridTile: View {
     let item: MediaItem
     let w: CGFloat, h: CGFloat
     var progress: Double? = nil
+    var focusMe = false
+    var focusTick = 0
     let action: () -> Void
     @EnvironmentObject var user: UserStore
     @FocusState private var focused: Bool
@@ -120,6 +127,7 @@ struct GridTile: View {
             Button(action: action) { TileFace(item: item, shape: item.kind == .live ? .logo : .poster, w: w, h: item.kind == .live ? w * 0.6 : h, progress: progress) }
                 .buttonStyle(TileButtonStyle())
                 .focused($focused)
+                .onChange(of: focusTick) { _, _ in if focusMe { focused = true } }
                 .contextMenu {
                     Button(action: action) { Label(item.kind == .live ? "Watch" : "Open", systemImage: "play.fill") }
                     Button { user.toggle(item) } label: {

@@ -70,6 +70,8 @@ final class Catalog: ObservableObject {
     @Published private(set) var indexProgress: String? = nil
     var needsAccount: Bool { accounts.isEmpty }
     @Published private(set) var counts: [String: Int] = [:]             // film/series category id -> titles
+    /// Film/series category id -> the pictures of its first titles (the browse cards' collage), from the index.
+    @Published private(set) var catArt: [String: [String]] = [:]
 
     private var channelCache: [String: [Channel]] = [:]
     private var itemCache: [String: [MediaItem]] = [:]
@@ -204,6 +206,9 @@ final class Catalog: ObservableObject {
         await t.value
         liveTask = nil
     }
+
+    /// Channels per live category (empty until the whole live list is loaded).
+    var liveCounts: [String: Int] { liveIndex.mapValues(\.count) }
 
     /// Live category id -> its country code ("BE"; "OTHER" when the name has no code), for every live category.
     func liveCodes() -> [String: String] {
@@ -405,14 +410,17 @@ final class Catalog: ObservableObject {
     }
 
     private func setIndex(_ ix: SearchIndex) async {
-        let c = await Task.detached(priority: .utility) { () -> [String: Int] in
-            var c: [String: Int] = [:]
-            for e in ix.films { c[e.cat, default: 0] += 1 }
-            for e in ix.series { c[e.cat, default: 0] += 1 }
-            return c
+        let (c, art) = await Task.detached(priority: .utility) { () -> ([String: Int], [String: [String]]) in
+            var c: [String: Int] = [:], art: [String: [String]] = [:]
+            for e in ix.films + ix.series {
+                c[e.cat, default: 0] += 1
+                if !e.img.isEmpty, (art[e.cat]?.count ?? 0) < 4 { art[e.cat, default: []].append(e.img) }
+            }
+            return (c, art)
         }.value
         index = ix
         counts = c
+        catArt = art
         indexState = .ready
     }
 

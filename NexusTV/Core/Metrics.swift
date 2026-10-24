@@ -13,7 +13,9 @@ final class Metrics: NSObject {
     let launch = Date()
     private let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("metrics.log")
     private let q = DispatchQueue(label: "metrics")
+    #if os(tvOS)
     private var link: CADisplayLink?
+    #endif
     private var last: CFTimeInterval = 0
     private var frames = 0, hitches = 0
     private var worst: CFTimeInterval = 0
@@ -34,9 +36,11 @@ final class Metrics: NSObject {
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
         observer = o
+        #if os(tvOS)
         let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
         l.add(to: .main, forMode: .common)
         link = l
+        #endif
     }
 
     /// View body evaluations, per view type, logged with the frame line each second.
@@ -50,8 +54,10 @@ final class Metrics: NSObject {
         write(name + String(format: " +%.0fms", Date().timeIntervalSince(launch) * 1000))
     }
 
-    @objc private func tick(_ l: CADisplayLink) {
-        let t = l.timestamp
+    #if os(tvOS)
+    @objc private func tick(_ l: CADisplayLink) { frame(at: l.timestamp) }
+    #endif
+    private func frame(at t: CFTimeInterval) {
         if last > 0 {
             let d = t - last
             frames += 1

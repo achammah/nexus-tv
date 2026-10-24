@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Live TV: countries + categories (left), channels with logos (middle), preview (right).
 struct GuideView: View {
+    /// Opened from a Live TV card: the country and the list to show first.
+    var start: (cc: String, group: String)? = nil
     @EnvironmentObject var catalog: Catalog
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var user: UserStore
@@ -37,6 +39,7 @@ struct GuideView: View {
         }
         .frame(width: 1920, height: 1080, alignment: .topLeading)
         .onAppear {
+            if let s = start, catId.isEmpty { selectCountry(s.cc); selectCategory(s.group); return }
             if let g = nav.guideCountry { nav.guideCountry = nil; selectCountry(g) }
             else if cc.isEmpty || !settings.countries.contains(cc) { selectCountry(settings.countries.first ?? "BE") }
         }

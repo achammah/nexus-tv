@@ -52,7 +52,13 @@ struct PlayRequest: Identifiable {
 final class Nav: ObservableObject {
     /// The last tab is kept, so reopening the app lands where the owner left.
     @Published var tab: TabID = TabID(rawValue: UserDefaults.standard.string(forKey: "nx.lastTab") ?? "") ?? .home {
-        didSet { UserDefaults.standard.set(tab.rawValue, forKey: "nx.lastTab") }
+        didSet { UserDefaults.standard.set(tab.rawValue, forKey: "nx.lastTab"); if tab != oldValue { browse = [] } }
+    }
+    /// Lists and families opened from a browse shelf (Menu goes back one).
+    @Published var browse: [BrowseRef] = []
+    /// Page-level language of Films and Series ("EN" or "FR"); list names carry no language tag.
+    @Published var browseLang: String = UserDefaults.standard.string(forKey: "nx.browseLang") ?? "EN" {
+        didSet { UserDefaults.standard.set(browseLang, forKey: "nx.browseLang") }
     }
     @Published var detail: [MediaItem] = []
     /// Home: the row holding the tile being moved.
@@ -72,6 +78,11 @@ final class Nav: ObservableObject {
         let d = UserDefaults.standard
         if let t = d.string(forKey: "NXTab"), let id = TabID(rawValue: t) { tab = id }
         if let s = d.string(forKey: "NXSearch") { searchSeed = s; tab = .search }
+        // -NXBrowse series|svc:Netflix|Netflix opens a family or a service's lists on top of its tab
+        if let b = d.string(forKey: "NXBrowse") {
+            let p = b.split(separator: "|").map(String.init)
+            if p.count == 3, let k = ItemKind(rawValue: p[0]) { browse = [BrowseRef(kind: k, key: p[1], title: p[2])] }
+        }
         if let o = d.string(forKey: "NXOpen") {
             let p = o.split(separator: ":").map(String.init)
             if p.count >= 2, let k = ItemKind(rawValue: p[0]) { detail = [MediaItem(kind: k, id: p[1], name: p.count > 2 ? p[2] : "")] }
@@ -94,5 +105,5 @@ final class Nav: ObservableObject {
     func play(_ it: MediaItem, startMs: Int = 0, list: [MediaItem] = [], index: Int = 0, subtitle: String = "", next: [MediaItem] = [], picture: String = "") {
         playing = PlayRequest(item: it, startMs: startMs, list: list, index: index, subtitle: subtitle, next: next, picture: picture.isEmpty ? it.img : picture)
     }
-    func openGuide(_ cc: String) { guideCountry = cc; detail = []; tab = .live }
+    func openGuide(_ cc: String) { guideCountry = cc; detail = []; browse = []; tab = .live }
 }

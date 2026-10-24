@@ -11,6 +11,8 @@ struct RootView: View {
     @ObservedObject private var toaster = Toaster.shared
     @ObservedObject private var chrome = Chrome.shared
     @State private var visited: Set<TabID> = []
+    /// The opening plays over Home at launch (Home loads underneath); a new install plays it under the account form.
+    @State private var opening = OpeningGate.enabled
 
     var body: some View {
         let _ = Metrics.shared.count("RootView")
@@ -19,17 +21,25 @@ struct RootView: View {
             // Tabs stay alive once opened so each keeps its place; hidden ones are disabled (not focusable).
             ForEach(TabID.allCases) { t in
                 if visited.contains(t) || t == nav.tab {
-                    let on = t == nav.tab && nav.detail.isEmpty
+                    let on = t == nav.tab && nav.detail.isEmpty && nav.browse.isEmpty
                     screen(t)
                         .opacity(on ? 1 : 0)
-                        .disabled(!on || catalog.needsAccount)
+                        .disabled(!on || catalog.needsAccount || opening)   // the opening holds the remote until it ends or is skipped
                         .accessibilityHidden(!on)
                 }
+            }
+            // opened lists and families stay alive under the one on top, so Menu lands back on the card it left
+            ForEach(Array(nav.browse.enumerated()), id: \.offset) { i, b in
+                let top = i == nav.browse.count - 1 && nav.detail.isEmpty
+                BrowseTVPage(ref: b, top: top).id(b)
+                    .opacity(top ? 1 : 0)
+                    .disabled(!top || catalog.needsAccount || opening)
+                    .accessibilityHidden(!top)
             }
             if let d = nav.detail.last {
                 DetailView(item: d).id(d.key)
             }
-            header.disabled(catalog.needsAccount)
+            header.disabled(catalog.needsAccount || opening)
             if case .failed(let msg) = catalog.state, nav.tab != .settings, !catalog.needsAccount {
                 Text(msg).font(.ui(24)).foregroundStyle(.white.opacity(0.7))
                     .padding(.horizontal, 30).padding(.vertical, 16).background(Capsule().fill(Theme.glass))
@@ -46,6 +56,7 @@ struct RootView: View {
                     .allowsHitTesting(false)
             }
             if catalog.needsAccount { OnboardingView() }
+            if opening && !catalog.needsAccount { OpeningOverlay { opening = false } }
             if let t = toaster.text {
                 Toast(text: t).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).padding(.bottom, 80)
                     .transition(.opacity).allowsHitTesting(false)
@@ -86,6 +97,7 @@ struct RootView: View {
     private var exitAction: (() -> Void)? {
         if nav.movingRow != nil { return { nav.stopMoving() } }
         if !nav.detail.isEmpty { return { nav.detail.removeLast() } }
+        if !nav.browse.isEmpty { return { nav.browse.removeLast() } }
         // Menu from the content goes up to the tab bar. A plain focus assignment is refused while focus is deep
         // in a scrolled screen, so this resets focus to the scope's preferred item, the current tab. On a scrolled
         // Home the header shows because the menu has focus; the black band under it stays (headerHidden stays set).
@@ -98,9 +110,9 @@ struct RootView: View {
     private func screen(_ t: TabID) -> some View {
         switch t {
         case .home: HomeView()
-        case .live: GuideView()
-        case .films: LibraryView(kind: .film)
-        case .series: LibraryView(kind: .series)
+        case .live: LiveBrowseTVView()
+        case .films: BrowseTVView(kind: .film)
+        case .series: BrowseTVView(kind: .series)
         case .mylist: MyListView()
         case .search: SearchView()
         case .settings: SettingsView()
@@ -112,9 +124,8 @@ struct RootView: View {
     private var header: some View {
         ZStack(alignment: .top) {
             HStack(spacing: 0) {
-                Image("NexusLogo").resizable().scaledToFit().frame(height: 40).padding(.top, 2)
-                Rectangle().fill(Color.white.opacity(0.35)).frame(width: 2, height: 32).padding(.leading, 18).padding(.trailing, 16)
-                Text("TV").font(.ui(36, .light)).tracking(3)
+                Image("Lockup").resizable().scaledToFit().frame(height: 52)      // the mark and "tv" (the opening's last frame)
+                    .accessibilityLabel("Nexus TV")
                 Spacer()
                 TimelineView(.periodic(from: .now, by: 10)) { ctx in
                     Text(ctx.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))

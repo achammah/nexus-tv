@@ -11,7 +11,7 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "10"
+    CURRENT_PROJECT_VERSION: "11"
 targets:
   NexusTV:
     type: application
@@ -52,10 +52,8 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        UILaunchScreen:
-          UIImageName: LaunchLogo
+        UILaunchScreen:              # black, like the opening's first frame (the opening follows at once)
           UIColorName: LaunchBackground
-          UIImageRespectsSafeAreaInsets: true
         UIUserInterfaceStyle: Dark
         UIRequiredDeviceCapabilities: [arm64]
         NSAppTransportSecurity:
@@ -73,3 +71,67 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.uitests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: NexusTV
+  NexusTVMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: MacApp
+      - path: NexusTV/Core
+      - path: NexusTV/Player/VLCController.swift
+      - path: NexusTV/Views/BannerCard.swift
+    dependencies:
+      - framework: Vendor/VLCKit.xcframework
+        embed: true
+    scheme:
+      testTargets:
+        - NexusTVMacTests
+        - NexusTVMacUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.mac
+        PRODUCT_NAME: Nexus TV
+        PRODUCT_MODULE_NAME: NexusTVMac
+        INFOPLIST_FILE: MacApp/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+    info:
+      path: MacApp/Info.plist
+      properties:
+        CFBundleDisplayName: Nexus TV
+        CFBundleName: Nexus TV
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.entertainment
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+  NexusTVMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: NexusTVMacUITests
+    dependencies:
+      - target: NexusTVMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.mac.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: NexusTVMac
+  NexusTVMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: NexusTVMacTests
+    dependencies:
+      - target: NexusTVMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nexus TV.app/Contents/MacOS/Nexus TV"
+        BUNDLE_LOADER: "$(TEST_HOST)"

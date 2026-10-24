@@ -128,7 +128,10 @@ final class RemoteJourneyTests: XCTestCase {
 
     // 10: live zap from the guide; favourite from the channel menu
     func test5_LiveGuideFavouriteZap() {
-        launch(["-NXTab", "live", "-NXResetUser", "YES"])
+        launch(["-NXTab", "live", "-NXResetUser", "YES"], wait: 14)
+        // Live TV opens on shelves by family: the first list card opens the guide on that list
+        for _ in 0..<6 { if app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch.identifier.hasPrefix("card:") { break }; press(.down, wait: 1) }
+        press(.select, wait: 6)
         press(.down, 2)
         press(.right, wait: 2)
         press(.down, 2, wait: 2)
