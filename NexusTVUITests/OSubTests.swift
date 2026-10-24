@@ -52,12 +52,12 @@ final class OSubTests: XCTestCase {
         openSubtitles()
         let header = app.staticTexts["Online · OpenSubtitles"]
         XCTAssertTrue(header.waitForExistence(timeout: 5), "online section in the CC menu")
-        let results = app.buttons.matching(NSPredicate(format: "label ENDSWITH ' · online'"))
+        let results = app.buttons.matching(NSPredicate(format: "label CONTAINS ' · online'"))
         let any = results.firstMatch.waitForExistence(timeout: 20)
         shot("o-2-cc-menu")
         XCTAssertTrue(any, "online results listed")
         // pick the first online result
-        for _ in 0..<40 { if focused.label.hasSuffix(" · online") { break }; press(.down, wait: 0.3) }
+        for _ in 0..<40 { if focused.label.contains(" · online") { break }; press(.down, wait: 0.3) }
         let picked = focused.label
         press(.select, wait: 8)
         shot("o-2-picked")
@@ -79,7 +79,7 @@ final class OSubTests: XCTestCase {
         openSubtitles()
         shot("o-3-next-episode")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'S1 E2'")).count > 0, "episode 2 plays")
-        XCTAssertTrue(focused.label.hasSuffix(" · online") && focused.isSelected, "episode 2 shows the online subtitle; at \(focused.label)")
+        XCTAssertTrue(focused.label.contains(" · online") && focused.isSelected, "episode 2 shows the online subtitle; at \(focused.label)")
     }
 
     // Earlier / Later move the online subtitle by 0.5 s and the timing is kept for that subtitle file
@@ -87,7 +87,7 @@ final class OSubTests: XCTestCase {
         let args = ["-NXPlay", "episode:1928870:mkv", "-NXName", "House Of Guinness · S1 E1", "-NXSeries", "45370:House Of Guinness", "-NXStart", "600000"]
         launch(args + ["-NXResetUser", "YES"], wait: 24)
         openSubtitles()                                        // pick the first online subtitle again (English)
-        for _ in 0..<40 { if focused.label.hasSuffix(" · online") { break }; press(.down, wait: 0.3) }
+        for _ in 0..<40 { if focused.label.contains(" · online") { break }; press(.down, wait: 0.3) }
         press(.select, wait: 8)
         openSubtitles()
         XCTAssertTrue(app.buttons["Later +0.5 s"].waitForExistence(timeout: 15), "timing rows under the online subtitle")
@@ -110,5 +110,16 @@ final class OSubTests: XCTestCase {
         for _ in 0..<3 { if focused.label.contains("0.5 s") { break }; press(.up, wait: 0.5) }
         if focused.label == "Later +0.5 s" { press(.left, wait: 0.5) }
         if focused.label == "Earlier −0.5 s" { press(.select, wait: 1) }
+    }
+
+    // Ranking: for Spider-Man Brand New Day the French pick is a named web release (AMZN), not the most downloaded
+    // nameless file (measured on the Frame: 21 of 88 lines in time for the nameless one, 46 of 88 for a WEB-DL one)
+    func test5_RankingPrefersNamedRelease() {
+        launch(["-NXPlay", "film:2163590:mkv", "-NXName", "Spider-Man Brand New Day", "-NXStart", "600000", "-NXResetUser", "YES"], wait: 24)
+        openSubtitles()
+        let fr = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'French · online'")).firstMatch
+        XCTAssertTrue(fr.waitForExistence(timeout: 20), "a French online subtitle")
+        shot("o-5-ranking")
+        XCTAssertTrue(fr.label.range(of: "AMZN|WEB", options: .regularExpression) != nil, "the French pick is a named web release; got \(fr.label)")
     }
 }

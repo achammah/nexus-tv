@@ -498,7 +498,7 @@ struct PlayerScreen: View {
             } label: {
                 HStack(spacing: 14) {
                     Image(systemName: "checkmark").opacity(sel ? 1 : 0).frame(width: 26)
-                    Text(OpenSubtitles.languageName(r.lang) + " · online")
+                    Text(OpenSubtitles.languageName(r.lang) + " · online" + Self.releaseHint(r.release)).lineLimit(1)
                 }
                 .frame(width: 420, alignment: .leading)
             }
@@ -549,6 +549,13 @@ struct PlayerScreen: View {
         delayTick += 1
         Metrics.shared.mark("player.osub delay=\(vlc.subtitleDelayMs)")
     }
+    /// The release a subtitle was made for, short ("· 1080p AMZN"); nothing when the uploader gave no release.
+    static func releaseHint(_ release: String) -> String {
+        let r = release.replacingOccurrences(of: ".", with: " ")
+        guard let m = r.range(of: "\\b((2160p|1080p|720p|480p)\\s+)?(WEB-?DL|WEBRip|WEB|Blu-?Ray|BDRip|BRRip|HDTV|AMZN|NF|DSNP|HMAX|ATVP)\\b", options: [.regularExpression, .caseInsensitive]) else { return "" }
+        return " · " + r[m].trimmingCharacters(in: .whitespaces)
+    }
+
     static func savedDelay(_ fid: Int) -> Int { (UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int])?[String(fid)] ?? 0 }
 
     private var settingsLanguages: [String] { (UserDefaults.standard.data(forKey: "nx.languages").flatMap { try? JSONDecoder().decode([String].self, from: $0) }) ?? Settings.defaultLanguages }
