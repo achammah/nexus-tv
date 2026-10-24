@@ -169,7 +169,7 @@ struct MacPill: ButtonStyle {
 struct Wordmark: View {
     var size: CGFloat = 15
     var body: some View {
-        Image("Lockup").resizable().interpolation(.high).scaledToFit().frame(height: size * 2.1)
+        Image("Lockup").resizable().interpolation(.high).scaledToFit().frame(height: size * 1.05).opacity(0.82)
             .accessibilityElement().accessibilityLabel("Nexus TV").accessibilityIdentifier("lockup")
     }
 }

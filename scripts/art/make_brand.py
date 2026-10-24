@@ -11,8 +11,9 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FINAL = sys.argv[1]
 INFO = {'author': 'xcode', 'version': 1}
-TV = os.path.join(ROOT, 'NexusTV/Assets.xcassets')
-MAC = os.path.join(ROOT, 'MacApp/Assets.xcassets')
+TV = os.path.join(ROOT, 'tvOS/Assets.xcassets')
+MAC = os.path.join(ROOT, 'macOS/Assets.xcassets')
+SHARED = os.path.join(ROOT, 'Shared/Brand.xcassets')   # the lockup both apps draw
 icon = Image.open(os.path.join(ROOT, 'build/icon1024.png')).convert('RGBA')
 mark = Image.open(os.path.join(ROOT, 'build/mark1024.png')).convert('RGBA')
 mark = mark.crop(mark.getbbox())
@@ -37,7 +38,7 @@ for y in range(src.height):
         r, g, b = px[x, y]
         a = max(r, g, b)
         lp[x, y] = (0, 0, 0, 0) if a == 0 else (min(255, r * 255 // a), min(255, g * 255 // a), min(255, b * 255 // a), a)
-for xc in (TV, MAC):
+for xc in (SHARED,):
     d = os.path.join(xc, 'Lockup.imageset')
     os.makedirs(d, exist_ok=True)
     lock.save(os.path.join(d, 'lockup.png'))

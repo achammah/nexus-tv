@@ -44,7 +44,7 @@ switched in Settings.
     <td width="50%"><img src="shots/tv-browse-films.png" alt="Films on Apple TV"><br><sub><b>The same shelves on Apple TV</b>, built for the Siri Remote.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="shots/mac-browse-live-us.jpg" alt="Live TV on the Mac"><br><sub><b>Live TV</b>: a country, its lists as shelves, then the channels with a preview.</sub></td>
+    <td width="50%"><img src="shots/mac-browse-live-us.jpg" alt="Live TV on the Mac"><br><sub><b>Live TV</b>: a country, its lists as shelves, then the channels (with a preview in the Apple TV guide).</sub></td>
     <td width="50%">
 
 **Highlights**
@@ -63,7 +63,7 @@ switched in Settings.
 
 <table>
   <tr>
-    <td width="50%"><img src="shots/mac-player-film.jpg" alt="Player on the Mac"><br><sub><b>Player</b>: floating controls that hide by themselves, 10 s jumps, audio, subtitles, picture in picture, full screen. Live scrubbing shows the real frame.</sub></td>
+    <td width="50%"><img src="shots/mac-player-film.jpg" alt="Player on the Mac"><br><sub><b>Player</b>: floating controls that hide by themselves, 10 s jumps, audio, subtitles, picture in picture, full screen. On Apple TV, scrubbing a film shows the real frame at the marker.</sub></td>
     <td width="50%"><img src="shots/mac-next-episode-card.jpg" alt="Next episode card"><br><sub><b>Next episode</b>: a card with the episode's picture and a countdown appears over the credits; Play now or Keep watching.</sub></td>
   </tr>
   <tr>
@@ -81,10 +81,10 @@ switched in Settings.
 | | |
 |---|---|
 | 🏠 **Home** | Featured series on top, then rows: Continue watching, My List, a live row per country, New films, Top series, and any category you add. On Apple TV, long press a tile to favourite it, add it to My List, move it in its row, or hide the row. |
-| 📺 **Live TV** | A country, then its lists as shelves with clean names (channels, films and series, sport, kids, documentary and music, streaming services, events last), then the channels with a preview. Favourite channels come first. Up and down change channel while watching. |
+| 📺 **Live TV** | A country, then its lists as shelves with clean names (channels, films and series, sport, kids, documentary and music, streaming services, events last), then the channels (on Apple TV a guide with a preview). Favourite channels come first. Up and down change channel while watching. |
 | 🎬 **Films and series** | Shelves per family with banner cards, a language filter, detail pages, seasons and episodes with their progress. Next episode plays by itself after a countdown. A **CC** badge marks titles known to have subtitles. |
 | 🔎 **Search** | Everything at once: channels, films and series, in every language. On Apple TV, Apple's own search screen with dictation and typing from an iPhone. On the Mac, ⌘F. |
-| ▶️ **Player** | VLCKit, live and on demand. Audio and subtitle tracks, live scrubbing with the real frame, Next episode above the timeline. One stream at a time; it reconnects by itself after a network drop. On the Mac the player lives in the main window: picture in picture, full screen, Esc goes back. |
+| ▶️ **Player** | VLCKit, live and on demand. Audio and subtitle tracks, scrubbing with the real frame on Apple TV, Next episode above the timeline. One stream at a time; it reconnects by itself after a network drop. On the Mac the player lives in the main window: picture in picture, full screen, Esc goes back. |
 | 💬 **Online subtitles, in sync** | Optional, with your own OpenSubtitles account (**Settings › Subtitles**: API key, username, password, kept in the Keychain). The app computes the OpenSubtitles fingerprint of the video from two small range reads and asks for subtitles made for that exact file; failing that, the same frame rate and the same release name win. The CC menu lists the best one per language; a pick uses one download, and for a series the next episode keeps the language. Earlier / Later shifts a subtitle by half a second, kept per file. |
 | ⚙️ **Settings** | Menu tabs and Home rows (show, hide, reorder), countries, languages, **Lists** (any category of your account as a Home row), **Channels** (star any channel), **Accounts** (add, switch, remove), clear lists. |
 
@@ -151,16 +151,13 @@ channel, F full screen, Esc leaves full screen, then picture in picture, then th
 One repository, one shared core, one folder per platform.
 
 ```
-NexusTV/
-  Core/              Xtream client, catalogue, caches, stores, subtitles (shared by both apps)
-  Player/            VLCKit player controller (shared) and the Apple TV player screen
-  App/, Views/       the Apple TV app
-MacApp/              the Mac app: window, sidebar, pages, player view, assets
-NexusTVUITests/      Apple TV journeys driven with the Siri Remote
-NexusTVMacTests/     Mac unit tests
-NexusTVMacUITests/   Mac journeys
-scripts/             setup, build and test helpers
-project.yml          XcodeGen: targets NexusTV (tvOS) and NexusTVMac (macOS); iPhone and iPad come next
+Shared/      Xtream client, catalogue, caches, stores, subtitles, VLCKit player controller
+tvOS/        the Apple TV app: entry point, screens, assets
+macOS/       the Mac app: window, sidebar, pages, player view, assets
+iOS/         planned
+Tests/       remote-driven journeys (tvOS), Mac journeys and unit tests
+scripts/     setup, build and test helpers
+project.yml  XcodeGen: targets NexusTV (tvOS) and NexusTVMac (macOS)
 ```
 
 Git-ignored: `Vendor/` (VLCKit), `Config/Signing.xcconfig`, `build/`.

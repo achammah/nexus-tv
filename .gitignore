@@ -1,5 +1,6 @@
 # secrets: the default account and the signing team stay on this Mac
 Config/Signing.xcconfig
+tvOS/Resources/DefaultAccount.plist
 NexusTV/Resources/DefaultAccount.plist
 # generated
 Vendor/
@@ -9,6 +10,7 @@ DerivedData/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 .DS_Store
 # prebuilt search file (catalogue names and ids): scripts/build_search_index.sh, run before archiving
+tvOS/Resources/search_all.json
 NexusTV/Resources/search_all.json
 # test captures (may show account names or typed logins): kept out of the repo
 shots/remote/

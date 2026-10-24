@@ -1,4 +1,4 @@
-"""Build NexusTV/Assets.xcassets: the in-app logo (SVG) and the tvOS app icon + top shelf images.
+"""Build tvOS/Assets.xcassets: the in-app logo (SVG) and the tvOS app icon + top shelf images.
 
 The logo PNG comes from svg2png.swift (AppKit draws the SVG). Run from the repo root:
   swift scripts/art/svg2png.swift scripts/art/nexus-logo-white.svg /tmp/logo.png 1400
@@ -11,7 +11,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-XC = os.path.join(ROOT, 'NexusTV/Assets.xcassets')
+XC = os.path.join(ROOT, 'tvOS/Assets.xcassets')
 LOGO = Image.open(sys.argv[1]).convert('RGBA')
 INFO = {'author': 'xcode', 'version': 1}
 FONT = '/System/Library/Fonts/HelveticaNeue.ttc'

@@ -92,6 +92,8 @@ struct BannerCard: View {
     @State private var tint = ArtTint.neutral
     @State private var hover = false
     private var k: CGFloat { width / 288 }
+    /// Screenshots: -NXNoHover YES draws no hover ring wherever the pointer rests.
+    static let noHover = UserDefaults.standard.bool(forKey: "NXNoHover")
 
     var body: some View {
         let h = width * 162 / 288
@@ -109,7 +111,7 @@ struct BannerCard: View {
                 .animation(.easeOut(duration: 0.12), value: hover)
         }
         .buttonStyle(.plain)
-        .onHover { hover = $0 }
+        .onHover { hover = $0 && !BannerCard.noHover }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.name + (model.countText.isEmpty ? "" : ", " + model.countText))
         .accessibilityIdentifier("card:" + model.name)

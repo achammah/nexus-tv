@@ -23,7 +23,7 @@ struct OnboardingView: View {
             }
             Group {
                 HStack(spacing: 0) {
-                    Image("Lockup").resizable().scaledToFit().frame(height: 52)      // the mark and "tv" (the opening's last frame)
+                    Image("Lockup").resizable().scaledToFit().frame(height: 26).opacity(0.82)      // the mark and "tv" (the opening's last frame), small and quiet
                         .accessibilityLabel("Nexus TV")
                 }
                 .frame(height: 44)

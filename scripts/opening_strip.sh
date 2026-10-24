@@ -3,7 +3,7 @@
 # frame N) under the same frames of the reference render. Output: shots/opening/strip.png (+ each frame).
 set -uo pipefail
 cd "$(dirname "$0")/.."
-REF=${OPENING_REF:-$HOME/nexus/nexus-organisation/work/frame-tv/logo/final/opening.mp4}
+REF=${OPENING_REF:?set OPENING_REF to the reference render (opening.mp4)}
 UDID=$(cat build/sim-udid); BID=com.nexus.tv
 mkdir -p shots/opening
 xcrun simctl install "$UDID" "build/dd/Build/Products/Debug-appletvsimulator/Nexus TV.app" || exit 1

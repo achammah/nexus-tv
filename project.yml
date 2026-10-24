@@ -1,3 +1,4 @@
+# One repo for every platform: Shared/ (both apps compile it), tvOS/, macOS/, Tests/. iOS comes later (stub below).
 name: NexusTV
 options:
   bundleIdPrefix: com.nexus
@@ -17,7 +18,8 @@ targets:
     type: application
     platform: tvOS
     sources:
-      - path: NexusTV
+      - path: Shared
+      - path: tvOS
     dependencies:
       - framework: Vendor/TVVLCKit.xcframework
         embed: true
@@ -42,10 +44,10 @@ targets:
         TARGETED_DEVICE_FAMILY: "3"
         ASSETCATALOG_COMPILER_APPICON_NAME: App Icon & Top Shelf Image
         ENABLE_USER_SCRIPT_SANDBOXING: NO
-        INFOPLIST_FILE: NexusTV/Info.plist
+        INFOPLIST_FILE: tvOS/Info.plist
         GENERATE_INFOPLIST_FILE: NO
     info:
-      path: NexusTV/Info.plist
+      path: tvOS/Info.plist
       properties:
         CFBundleDisplayName: Nexus TV
         CFBundleName: Nexus TV
@@ -63,7 +65,7 @@ targets:
     type: bundle.ui-testing
     platform: tvOS
     sources:
-      - path: NexusTVUITests
+      - path: Tests/tvOSUITests
     dependencies:
       - target: NexusTV
     settings:
@@ -76,10 +78,8 @@ targets:
     platform: macOS
     deploymentTarget: "14.0"
     sources:
-      - path: MacApp
-      - path: NexusTV/Core
-      - path: NexusTV/Player/VLCController.swift
-      - path: NexusTV/Views/BannerCard.swift
+      - path: Shared
+      - path: macOS
     dependencies:
       - framework: Vendor/VLCKit.xcframework
         embed: true
@@ -92,14 +92,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.mac
         PRODUCT_NAME: Nexus TV
         PRODUCT_MODULE_NAME: NexusTVMac
-        INFOPLIST_FILE: MacApp/Info.plist
+        INFOPLIST_FILE: macOS/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
     info:
-      path: MacApp/Info.plist
+      path: macOS/Info.plist
       properties:
         CFBundleDisplayName: Nexus TV
         CFBundleName: Nexus TV
@@ -113,7 +113,7 @@ targets:
     platform: macOS
     deploymentTarget: "14.0"
     sources:
-      - path: NexusTVMacUITests
+      - path: Tests/macOSUITests
     dependencies:
       - target: NexusTVMac
     settings:
@@ -126,7 +126,7 @@ targets:
     platform: macOS
     deploymentTarget: "14.0"
     sources:
-      - path: NexusTVMacTests
+      - path: Tests/macOSTests
     dependencies:
       - target: NexusTVMac
     settings:
@@ -135,3 +135,18 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nexus TV.app/Contents/MacOS/Nexus TV"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  # iOS (planned): an iPhone and iPad app on the same Shared/ code.
+  # NexusTViOS:
+  #   type: application
+  #   platform: iOS
+  #   deploymentTarget: "17.0"
+  #   sources:
+  #     - path: Shared
+  #     - path: iOS
+  #   dependencies:
+  #     - framework: Vendor/MobileVLCKit.xcframework
+  #       embed: true
+  #   settings:
+  #     base:
+  #       PRODUCT_BUNDLE_IDENTIFIER: com.nexus.tv.ios
+  #       PRODUCT_NAME: Nexus TV

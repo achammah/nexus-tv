@@ -19,7 +19,7 @@ final class InWindowPlayerTests: XCTestCase {
     }
     func testNoSeparatePlayerWindowScene() throws {
         // the app declares one window: the library (the player window scene was removed)
-        let src = try String(contentsOfFile: #filePath.replacingOccurrences(of: "NexusTVMacTests/InWindowPlayerTests.swift", with: "MacApp/NexusTVMacApp.swift"), encoding: .utf8)
+        let src = try String(contentsOfFile: #filePath.replacingOccurrences(of: "Tests/macOSTests/InWindowPlayerTests.swift", with: "macOS/NexusTVMacApp.swift"), encoding: .utf8)
         XCTAssertFalse(src.contains("WindowGroup(\"Player\""), "no separate player window")
     }
 }
