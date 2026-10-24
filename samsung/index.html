@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Live</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<!-- First frame: the same picture the launcher zooms into, shown before any script runs. -->
+<img id="boot" src="img/boot.jpg" alt="">
+<object id="avPlayer" type="application/avplayer"></object>
+
+<div id="app">
+  <div class="scr" id="home"></div>
+  <div class="scr" id="live"></div>
+  <div class="scr" id="guide"></div>
+  <div class="scr" id="lib"></div>
+  <div class="scr" id="detail"></div>
+  <div class="scr" id="search"></div>
+  <div class="scr" id="settings"></div>
+  <div id="brand"><img src="img/logo-tv.png" alt="tv"></div>
+  <div id="nav"></div>
+  <div id="clock"></div>
+</div>
+
+<div id="player">
+  <div class="load"><div class="lb"></div><div class="lt"></div><div class="ls"></div><div class="lp"><i></i></div></div>
+  <div id="subs"></div>
+  <div class="spinner busy"></div>
+  <div id="tpanel" class="tpanel"></div>
+  <div class="info"><div class="pt"></div><div class="ps"></div><div class="time"></div><div class="prog"><i></i><b></b></div><div class="scrubt"><div class="sp"></div><div class="sf"></div><div class="st"></div><div class="sd"></div></div><div class="ctl"></div><div class="nextb"></div></div>
+</div>
+<div id="bgprog"><i></i></div>
+<div id="onb"></div>
+<div id="gpk"></div>
+<div id="menu"></div>
+<div id="toast"><span></span></div>
+
+<script src="data/config.js"></script>
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+<script src="img/logos/be/index.js"></script><script src="js/util.js"></script>
+<script src="js/sources.js"></script>
+<script src="js/subs.js"></script>
+<script src="js/player.js"></script>
+<script src="js/home.js"></script>
+<script src="js/browse.js"></script>
+<script src="js/guide.js"></script>
+<script src="js/livehome.js"></script>
+<script src="js/library.js"></script>
+<script src="js/search.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/menu.js"></script>
+<script src="js/onboard.js"></script>
+<script src="js/picker.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+data/*.json
+data/config.js
+img/hero*.jpg
+*.wgt
+signature1.xml
+author-signature.xml
+.cache/
