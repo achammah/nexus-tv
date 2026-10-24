@@ -58,8 +58,12 @@ final class MacPlayerModel: ObservableObject {
     func start(again: Bool = false) {
         guard let url = catalog.url(item) else { vlc.failed = true; return }
         if !again { attempts = 0; reconnecting = false; upDone = false }
+        autoSync.stop()      // a new stream: its own reference
         if onlineFor != item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] } else { onlineTrack = nil }
         vlc.play(url, startMs: startMs, live: isLive)
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "NXMute") { vlc.player.audio?.isMuted = true }     // checks that run while the owner works
+        #endif
         if !isLive { user.setResume(item, posMs: startMs, durMs: 0) }
         lastSave = Date()
         if item.kind == .episode && next.isEmpty { Task { await loadNextEpisodes() } }
@@ -187,7 +191,7 @@ final class MacPlayerModel: ObservableObject {
     func choose(subtitle t: (Int, String)) {
         let real = vlc.subtitleTracks.filter { $0.0 >= 0 && $0.0 != onlineTrack }
         vlc.setSubtitle(t.0)
-        onlineActive = nil
+        onlineActive = nil; autoSync.stop()
         user.setTrackPref(item) {
             $0.subOff = t.0 < 0; $0.subLang = t.0 >= 0 ? VLCController.trackName(t.1) : nil
             $0.subPos = real.firstIndex { $0.0 == t.0 }; $0.subOnline = nil
@@ -239,6 +243,13 @@ final class MacPlayerModel: ObservableObject {
             let r = try await OpenSubtitles.shared.search(q, languages: OpenSubtitles.languages(languages), hash: hash, fps: vlc.fps)
             guard onlineFor == key else { return }
             online = r; onlineState = r.isEmpty ? "No online subtitles in your languages." : "done"
+            Metrics.shared.mark("player.osub hash=\(hash.isEmpty ? "none" : "ok") fps=\(String(format: "%.3f", vlc.fps)) exact=\(r.filter(\.exact).count) results=\(r.count)")
+            #if DEBUG
+            // test hook: -NXPickOnline fr picks the first online subtitle in that language (a check with no mouse)
+            if let l = UserDefaults.standard.string(forKey: "NXPickOnline"), onlineActive == nil, let p = r.first(where: { $0.lang == l }) {
+                await pickOnline(p, remember: false)
+            }
+            #endif
         } catch {
             if onlineFor == key { onlineState = "Online search failed (\(error.localizedDescription))." }
         }
@@ -252,19 +263,41 @@ final class MacPlayerModel: ObservableObject {
             guard let n = await vlc.addSubtitleFile(url) else { show("Online subtitles could not be shown"); return }
             onlineActive = r.fileId; onlineTrack = n
             vlc.subtitleDelayMs = Self.savedDelay(r.fileId)
+            Metrics.shared.mark("player.osub added lang=\(r.lang) track=\(n) exact=\(r.exact) delay=\(vlc.subtitleDelayMs)")
             if remember { user.setTrackPref(item) { $0.subOff = false; $0.subOnline = r.lang; $0.subLang = nil; $0.subPos = nil } }
+            await startAutoSync(r, file: url)
         } catch { show("Online subtitles failed (\(error.localizedDescription))") }
+    }
+
+    /// Live realignment of an online subtitle not made for this exact file (Shared/Core/SubAutoSync.swift); the next
+    /// candidates of the same language are tried when this one was timed for another cut.
+    private lazy var autoSync = SubAutoSync(vlc: vlc)
+    private func startAutoSync(_ r: OSResult, file: URL) async {
+        guard let stream = catalog.url(item) else { return }
+        let rest = Array(online.filter { $0.lang == r.lang }.drop { $0.fileId != r.fileId }.dropFirst())
+        await autoSync.start(stream: stream, pick: r, file: file, candidates: rest, switchTo: { [weak self] next in
+            guard let self else { return nil }
+            do {
+                let url: URL
+                if let f = self.onlineFiles[next.fileId] { url = f } else { url = try await OpenSubtitles.shared.download(next); self.onlineFiles[next.fileId] = url }
+                guard let n = await self.vlc.addSubtitleFile(url) else { return nil }
+                self.onlineActive = next.fileId; self.onlineTrack = n
+                return url
+            } catch { return nil }
+        }, log: { Metrics.shared.mark($0) })
     }
 
     func shiftDelay(_ ms: Int) {
         guard let fid = onlineActive else { return }
-        vlc.subtitleDelayMs += ms
-        var all = UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int] ?? [:]
-        all[String(fid)] = vlc.subtitleDelayMs
-        UserDefaults.standard.set(all, forKey: "nx.subDelay")
+        if autoSync.fileId == fid { _ = autoSync.shift(ms) } else {    // on top of the found offset
+            vlc.subtitleDelayMs += ms
+            var all = UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int] ?? [:]
+            all[String(fid)] = vlc.subtitleDelayMs
+            UserDefaults.standard.set(all, forKey: "nx.subDelay")
+        }
         objectWillChange.send()
     }
-    static func savedDelay(_ fid: Int) -> Int { (UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int])?[String(fid)] ?? 0 }
+    static func savedDelay(_ fid: Int) -> Int { SubAutoSync.savedDelay(fid) }
 
     static func releaseHint(_ release: String) -> String {
         let r = release.replacingOccurrences(of: ".", with: " ")

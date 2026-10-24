@@ -16,6 +16,13 @@ struct NexusTVMacApp: App {
         if UserDefaults.standard.bool(forKey: "NXResetAccounts") { AccountVault.removeAll() }
         if UserDefaults.standard.bool(forKey: "NXClearCache") { DiskCache.clear() }
         if UserDefaults.standard.bool(forKey: "NXResetOSub") { OpenSubtitles.resetForTests() }
+        if UserDefaults.standard.bool(forKey: "NXResetSubDelay") { UserDefaults.standard.removeObject(forKey: "nx.subDelay") }
+        // checks with no mouse: NXTV_SEED_OSUB_FILE (3 lines: API key, username, password) signs in to OpenSubtitles
+        if let f = ProcessInfo.processInfo.environment["NXTV_SEED_OSUB_FILE"], !OpenSubtitles.shared.ready,
+           let t = try? String(contentsOfFile: (f as NSString).expandingTildeInPath, encoding: .utf8) {
+            let l = t.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            if l.count >= 3 { Task { @MainActor in try? await OpenSubtitles.shared.signIn(OSAccount(key: l[0], user: l[1], pass: l[2])) } }
+        }
         // screenshots: NXTV_SEED_ACCOUNT_FILE (3 lines: server, username, password) signs in when no account exists
         if let f = ProcessInfo.processInfo.environment["NXTV_SEED_ACCOUNT_FILE"], AccountVault.list().isEmpty,
            let t = try? String(contentsOfFile: (f as NSString).expandingTildeInPath, encoding: .utf8) {
@@ -23,6 +30,7 @@ struct NexusTVMacApp: App {
             if l.count >= 3 { AccountVault.save([StoredAccount(id: "default", name: "My IPTV", server: Account(server: l[0], username: l[1], password: l[2]).base, username: l[1], password: l[2])]) }
         }
         #endif
+        Metrics.shared.start()          // only with -NXMetrics YES
     }
 
     var body: some Scene {

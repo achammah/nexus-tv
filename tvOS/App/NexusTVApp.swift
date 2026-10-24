@@ -15,6 +15,8 @@ struct NexusTVApp: App {
         if UserDefaults.standard.bool(forKey: "NXClearCache") { DiskCache.clear() }
         // test hook: -NXResetOSub YES starts with no OpenSubtitles account
         if UserDefaults.standard.bool(forKey: "NXResetOSub") { OpenSubtitles.resetForTests() }
+        // test hook: -NXResetSubDelay YES forgets every subtitle timing (found or set by hand)
+        if UserDefaults.standard.bool(forKey: "NXResetSubDelay") { UserDefaults.standard.removeObject(forKey: "nx.subDelay") }
         #endif
         Metrics.shared.start()
     }

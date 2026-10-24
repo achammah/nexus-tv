@@ -11,7 +11,14 @@ final class Metrics: NSObject {
     static let shared = Metrics()
     static let on = UserDefaults.standard.bool(forKey: "NXMetrics")
     let launch = Date()
-    private let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("metrics.log")
+    private let url: URL = {
+        var d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        #if os(macOS)
+        d = d.appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.nexus.tv.mac")   // the Mac app is not sandboxed
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        #endif
+        return d.appendingPathComponent("metrics.log")
+    }()
     private let q = DispatchQueue(label: "metrics")
     #if os(tvOS)
     private var link: CADisplayLink?

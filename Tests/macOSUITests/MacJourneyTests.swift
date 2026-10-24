@@ -205,4 +205,26 @@ final class MacJourneyTests: XCTestCase {
         card.click(); idle(6)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'channel:'")).firstMatch.waitForExistence(timeout: 20), "the list's channels")
     }
+
+    // Live realignment: a French online subtitle 6 s off comes into sync by itself within two minutes; the offset
+    // shows as Timing in the subtitles menu (scripts/realign_check.py measures the true one for the same file).
+    func test10_OnlineSubtitleRealigns() {
+        launch(["-NXPlay", "film:2163590:mkv", "-NXName", "Spider-Man Brand New Day", "-NXStart", "900000", "-NXSubDelayStart", "6000"], wait: 20)
+        let player = app.windows.firstMatch
+        player.hover(); idle(1)
+        app.descendants(matching: .any)["cc-menu"].click(); idle(2)
+        let fr = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'French · online'")).firstMatch
+        XCTAssertTrue(fr.waitForExistence(timeout: 20), "a French online subtitle")
+        fr.click(); idle(6)
+        app.descendants(matching: .any)["cc-menu"].click(); idle(1)
+        let before = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'Timing'")).firstMatch.title
+        app.typeKey(.escape, modifierFlags: []); idle(100)
+        player.hover(); idle(1)
+        app.descendants(matching: .any)["cc-menu"].click(); idle(1)
+        let after = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'Timing'")).firstMatch.title
+        app.typeKey(.escape, modifierFlags: [])
+        try? "before=\(before)\nafter=\(after)\n".write(toFile: dir + "/realign-mac.txt", atomically: true, encoding: .utf8)
+        let v = Double(after.replacingOccurrences(of: "Timing ", with: "").replacingOccurrences(of: " s", with: "")) ?? 99
+        XCTAssertLessThan(abs(v), 1.0, "in sync with no press: \(before) -> \(after)")
+    }
 }

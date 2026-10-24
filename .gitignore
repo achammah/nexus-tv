@@ -18,3 +18,4 @@ shots/netcut-*
 .nexus-native
 shots/perf-phases.txt
 shots/mac/
+__pycache__/

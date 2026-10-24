@@ -31,6 +31,8 @@ struct PlayerScreen: View {
     @State private var onlineActive: Int? = nil   // file id
     @State private var onlineTrack: Int? = nil    // its subtitle track index
     @State private var onlineFiles: [Int: URL] = [:]
+    /// Live realignment of an online subtitle not made for this exact file (Shared/Core/SubAutoSync.swift).
+    @State private var autoSync: SubAutoSync?
     @State private var delayTick = 0              // redraws the timing line after Earlier / Later
 
     @State private var infoVisible = true
@@ -397,10 +399,12 @@ struct PlayerScreen: View {
     }
     /// Manual timing for an online subtitle, kept per subtitle file.
     private func shiftDelay(_ fid: Int, _ ms: Int) {
-        vlc.subtitleDelayMs += ms
-        var all = UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int] ?? [:]
-        all[String(fid)] = vlc.subtitleDelayMs
-        UserDefaults.standard.set(all, forKey: "nx.subDelay")
+        if let a = autoSync, a.fileId == fid { _ = a.shift(ms) } else {   // on top of the found offset
+            vlc.subtitleDelayMs += ms
+            var all = UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int] ?? [:]
+            all[String(fid)] = vlc.subtitleDelayMs
+            UserDefaults.standard.set(all, forKey: "nx.subDelay")
+        }
         delayTick += 1
         Metrics.shared.mark("player.osub delay=\(vlc.subtitleDelayMs)")
     }
@@ -411,7 +415,7 @@ struct PlayerScreen: View {
         return " · " + r[m].trimmingCharacters(in: .whitespaces)
     }
 
-    static func savedDelay(_ fid: Int) -> Int { (UserDefaults.standard.dictionary(forKey: "nx.subDelay") as? [String: Int])?[String(fid)] ?? 0 }
+    static func savedDelay(_ fid: Int) -> Int { SubAutoSync.savedDelay(fid) }
 
     private var settingsLanguages: [String] { (UserDefaults.standard.data(forKey: "nx.languages").flatMap { try? JSONDecoder().decode([String].self, from: $0) }) ?? Settings.defaultLanguages }
 
@@ -425,9 +429,29 @@ struct PlayerScreen: View {
             vlc.subtitleDelayMs = Self.savedDelay(r.fileId)
             if remember { user.setTrackPref(request.item) { $0.subOff = false; $0.subOnline = r.lang; $0.subLang = nil; $0.subPos = nil } }
             Metrics.shared.mark("player.osub added lang=\(r.lang) track=\(n) exact=\(r.exact) q=\(r.quality) delay=\(vlc.subtitleDelayMs)")
+            await startAutoSync(r, file: url)
         } catch {
             user.show("Online subtitles failed (\(error.localizedDescription))")
         }
+    }
+
+    /// Not an exact-file match: align it live against the file's own subtitle track; the next candidates of the same
+    /// language (in the ranked order) are tried when this one was timed for another cut.
+    private func startAutoSync(_ r: OSResult, file: URL) async {
+        guard let stream = catalog.url(request.item) else { return }
+        let sync = autoSync ?? SubAutoSync(vlc: vlc)
+        autoSync = sync
+        let same = online.filter { $0.lang == r.lang }
+        let rest = Array(same.drop { $0.fileId != r.fileId }.dropFirst())
+        await sync.start(stream: stream, pick: r, file: file, candidates: rest, switchTo: { next in
+            do {
+                let url: URL
+                if let f = onlineFiles[next.fileId] { url = f } else { url = try await osub.download(next); onlineFiles[next.fileId] = url }
+                guard let n = await vlc.addSubtitleFile(url) else { return nil }
+                onlineActive = next.fileId; onlineTrack = n
+                return url
+            } catch { return nil }
+        }, log: { Metrics.shared.mark($0) })
     }
 
     private func trackPanel(_ k: TrackKind) -> some View {
@@ -508,6 +532,7 @@ struct PlayerScreen: View {
             user.setTrackPref(request.item) { $0.audioLang = lang; $0.audioPos = pos }
         } else {
             vlc.setSubtitle(t.0)
+            autoSync?.stop()
             user.setTrackPref(request.item) { $0.subOff = t.0 < 0; $0.subLang = lang; $0.subPos = pos; $0.subOnline = nil }
         }
         Metrics.shared.mark("player.choose \(k == .audio ? "audio" : "subs")=\(lang ?? "Off") index=\(t.0)")
@@ -583,6 +608,7 @@ struct PlayerScreen: View {
     private func start(again: Bool = false) {
         guard let url = catalog.url(request.item) else { vlc.failed = true; return }
         if !again { attempts = 0; reconnecting = false; upDone = false }
+        autoSync?.stop()     // a new stream: its own reference
         if onlineFor != request.item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] }
         else { onlineTrack = nil }      // a reopened stream: the remembered choice adds the file again
         vlc.play(url, startMs: request.startMs, live: isLive)
