@@ -1,0 +1,29 @@
+﻿#EXTM3U url-tvg="https://guide.example.invalid/epg.xml.gz,https://guide2.example.invalid/epg.xml" x-tvg-url="https://other.example.invalid/x.xml"
+#EXTINF:-1 tvg-id="one.example" tvg-name="One HD" tvg-logo="https://img.example.invalid/one.png" group-title="News",One
+http://stream.example.invalid/live/one.m3u8
+#EXTINF:-1 tvg-id="multi.example" tvg-logo="https://img.example.invalid/multi.png" group-title="Sport;Kids;Family",Multi Channel
+http://stream.example.invalid/live/multi.m3u8
+#EXTINF:-1 tvg-id="grp.example",Grouped By Extgrp
+#EXTGRP:Music
+http://stream.example.invalid/live/music.m3u8
+#EXTINF:-1 group-title="News",Needs Agent
+#EXTVLCOPT:http-user-agent=AgentFromVlcOpt/1.0
+#EXTVLCOPT:http-referrer=https://ref.example.invalid/
+http://stream.example.invalid/live/agent.m3u8
+#EXTINF:-1 group-title="News" http-user-agent="AgentFromAttr/2.0" http-referrer="https://attr.example.invalid/",Attr Agent
+http://stream.example.invalid/live/attr.m3u8
+#EXTINF:-1 group-title="News",Kodi Pipe
+http://stream.example.invalid/live/kodi.m3u8|User-Agent=KodiAgent%2F3.0&Referer=https://kodi.example.invalid/
+#EXTINF:-1 group-title="Cinema",A Film By Extension
+http://stream.example.invalid/movie/film1.mkv
+#EXTINF:-1 group-title="Movies",A Film By Group
+http://stream.example.invalid/movie/film2
+#EXTINF:-1 group-title="Movies",Live Movie Channel
+http://stream.example.invalid/live/moviechan.m3u8
+#EXTINF:-1 group-title="Series" tvg-logo="https://img.example.invalid/show.png",Some Show S01E01 Pilot
+http://stream.example.invalid/series/s1e1.mp4
+#EXTINF:-1 group-title="Series",Some Show S01E02 Second
+http://stream.example.invalid/series/s1e2.mp4
+#EXTINF:-1 group-title="Series",Some Show S02E01
+http://stream.example.invalid/series/s2e1.mp4
+# a comment line

@@ -70,7 +70,9 @@ struct BrowseTVView: View {
                         TVShelf(title: shelf.name, count: Browse.count(lib.services.count, "service")) {
                             ForEach(lib.services, id: \.service.name) { s in
                                 BannerCard(model: BannerModels.service(s.service, lists: s.lists.count), width: cardW) {
-                                    nav.browse.append(BrowseRef(kind: kind, key: "svc:" + s.service.name, title: s.service.name))
+                                    // One list only: open it straight away.
+                                    if s.lists.count == 1, let only = s.lists.first { open(only) }
+                                    else { nav.browse.append(BrowseRef(kind: kind, key: "svc:" + s.service.name, title: s.service.name)) }
                                 }
                                 .focused($focus, equals: "svc:" + s.service.name)
                             }
@@ -118,7 +120,22 @@ struct LiveBrowseTVView: View {
     @State private var last: String?
 
     var body: some View {
-        let country = cc.isEmpty ? (settings.countries.first ?? "BE") : cc
+        Group {
+            if cc.isEmpty {
+                LiveLandingTV { code in
+                    // One list only: open it straight away instead of a page with one card.
+                    let live = Browse.live(catalog.liveGroups(code), counts: catalog.liveCounts)
+                    let every = live.shelves.flatMap(\.lists) + live.hidden
+                    if every.count == 1, let only = every.first { open(only, code) } else { cc = code }
+                }
+            } else { countryView }
+        }
+        .onAppear { if let g = nav.guideCountry { nav.guideCountry = nil; cc = g } }
+        .onChange(of: nav.guideCountry) { _, g in if let g { nav.guideCountry = nil; cc = g } }
+    }
+
+    @ViewBuilder private var countryView: some View {
+        let country = cc
         let live = Browse.live(catalog.liveGroups(country), counts: catalog.liveCounts)
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 30) {
@@ -155,8 +172,7 @@ struct LiveBrowseTVView: View {
         }
         .frame(width: 1920, height: 1080)
         .task { await catalog.ensureLiveIndex() }
-        .onAppear { if let g = nav.guideCountry { nav.guideCountry = nil; cc = g } }
-        .onChange(of: nav.guideCountry) { _, g in if let g { nav.guideCountry = nil; cc = g } }
+        .onExitCommand { if nav.browse.isEmpty { cc = "" } }
         .onChange(of: focus) { _, f in if let f { last = f } }
         .onChange(of: nav.browse.isEmpty) { _, e in if e, let l = last { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { focus = l } } }
     }

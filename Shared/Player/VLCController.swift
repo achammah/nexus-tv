@@ -34,13 +34,34 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     /// Opens one stream. The account allows a single connection: the previous media is stopped and released first.
     func play(_ url: URL, startMs: Int, live: Bool) {
         stop()
+        // a portal gives a placeholder address: create_link turns it into the real stream just before it opens
+        if url.scheme == "nxportal" {
+            failed = false; ended = false; started = false; loadPct = 0; timeMs = startMs
+            let token = UUID(); resolving = token
+            Task { @MainActor in
+                let real = await PortalSource.current?.resolve(url)
+                guard self.resolving == token else { return }
+                guard let real else { self.failed = true; return }
+                self.open(real, startMs: startMs, live: live)
+            }
+            return
+        }
+        resolving = nil
+        open(url, startMs: startMs, live: live)
+    }
+    private var resolving: UUID?
+
+    private func open(_ url: URL, startMs: Int, live: Bool) {
         self.live = live
         failed = false; ended = false; started = false; loadPct = 0; timeMs = startMs; lengthMs = 0; paused = false
         lastProgress = Date(); lastTime = -1
         let m = VLCMedia(url: url)
         m.addOption(live ? ":network-caching=3000" : ":network-caching=5000")
         m.addOption(":http-reconnect")
-        m.addOption(":http-user-agent=Mozilla/5.0 (AppleTV) NexusTV/1.0")
+        // a playlist can name a user agent and a referrer per channel (EXTVLCOPT, EXTINF attributes, Kodi style url|User-Agent=..)
+        let h = StreamHeaderRegistry.shared.headers(for: url.absoluteString)
+        m.addOption(":http-user-agent=" + (h?.userAgent.isEmpty == false ? h!.userAgent : "Mozilla/5.0 (AppleTV) NexusTV/1.0"))
+        if let r = h?.referrer, !r.isEmpty { m.addOption(":http-referrer=" + r) }
         if startMs > 0 { m.addOption(":start-time=\(Double(startMs) / 1000)") }
         player.media = m
         player.play()
@@ -66,6 +87,7 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     }
 
     func stop() {
+        resolving = nil
         poll?.invalidate()
         if player.media != nil { player.stop(); player.media = nil }
     }

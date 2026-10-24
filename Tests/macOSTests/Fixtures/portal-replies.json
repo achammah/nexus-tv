@@ -1,0 +1,90 @@
+{
+ "handshake": {
+  "js": {
+   "token": "TOKEN123"
+  }
+ },
+ "get_profile": {
+  "js": {
+   "id": "1",
+   "name": "stb"
+  }
+ },
+ "get_genres": {
+  "js": [
+   {
+    "id": "*",
+    "title": "All"
+   },
+   {
+    "id": "1",
+    "title": "News"
+   },
+   {
+    "id": "2",
+    "title": "Sport"
+   }
+  ]
+ },
+ "get_all_channels": {
+  "js": {
+   "data": [
+    {
+     "id": "10",
+     "name": "Portal One",
+     "cmd": "ffrt http://localhost/ch/10",
+     "tv_genre_id": "1",
+     "logo": "10.png"
+    },
+    {
+     "id": "11",
+     "name": "Portal Two",
+     "cmd": "ffrt http://localhost/ch/11",
+     "tv_genre_id": "2",
+     "logo": "https://img.example.invalid/11.png"
+    }
+   ]
+  }
+ },
+ "vod_categories": {
+  "js": [
+   {
+    "id": "5",
+    "title": "Drama"
+   }
+  ]
+ },
+ "vod_list": {
+  "js": {
+   "total_items": 2,
+   "max_page_items": 2,
+   "data": [
+    {
+     "id": "1",
+     "name": "Portal Film",
+     "cmd": "/media/1.mpg",
+     "screenshot_uri": "/shot/1.jpg"
+    },
+    {
+     "id": "2",
+     "name": "Portal Film Two",
+     "cmd": "/media/2.mpg",
+     "screenshot_uri": ""
+    }
+   ]
+  }
+ },
+ "series_categories": {
+  "js": [
+   {
+    "id": "7",
+    "title": "Shows"
+   }
+  ]
+ },
+ "create_link": {
+  "js": {
+   "cmd": "ffmpeg http://media.example.invalid/play/abc.m3u8"
+  }
+ }
+}

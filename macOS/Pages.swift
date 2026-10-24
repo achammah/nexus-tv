@@ -23,34 +23,10 @@ struct HomePage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 hero
-                if !user.continueList.isEmpty {
-                    VStack(alignment: .leading) {
-                        RowTitle(title: "Continue watching")
-                        TileRow {
-                            ForEach(user.continueList, id: \.item.key) { r in
-                                ResumeTile(point: r) { Player(nav: nav).play(r.item, startMs: r.posMs) }
-                            }
-                        }
-                    }
-                }
-                ForEach(settings.countries, id: \.self) { cc in CountryRow(cc: cc) }
-                if !catalog.newFilms.isEmpty {
-                    VStack(alignment: .leading) {
-                        RowTitle(title: "New films", sub: "Recently added")
-                        TileRow { ForEach(catalog.newFilms, id: \.key) { PosterTile(item: $0) } }
-                    }
-                }
-                if !catalog.topSeries.isEmpty {
-                    VStack(alignment: .leading) {
-                        RowTitle(title: "Top series")
-                        TileRow { ForEach(catalog.topSeries, id: \.key) { PosterTile(item: $0) } }
-                    }
-                }
-                if !user.myList.isEmpty {
-                    VStack(alignment: .leading) {
-                        RowTitle(title: "My List")
-                        TileRow { ForEach(user.myList, id: \.key) { PosterTile(item: $0) } }
-                    }
+                // Rows in the owner's order; a right-click on a tile moves it, removes it or hides its row.
+                ForEach(settings.visibleRows, id: \.self) { id in row(id) }
+                if settings.homeRows.contains(where: { !$0.visible && (HomeRow.mac.contains($0.id) || $0.id.hasPrefix("live:")) }) {
+                    Button("Show hidden rows") { settings.showAllRows() }.buttonStyle(MacPill()).accessibilityIdentifier("show-hidden-rows")
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 22)
@@ -98,17 +74,56 @@ struct HomePage: View {
             .accessibilityIdentifier("hero")
         }
     }
+
+    @ViewBuilder private func row(_ id: String) -> some View {
+        switch id {
+        case "continue" where !user.continueList.isEmpty:
+            let list = settings.ordered("continue", user.continueList, key: { $0.item.key })
+            VStack(alignment: .leading) {
+                RowTitle(title: "Continue watching")
+                TileRow {
+                    ForEach(list, id: \.item.key) { r in
+                        ResumeTile(point: r) { Player(nav: nav).play(r.item, startMs: r.posMs) }
+                            .contextMenu { TileMenu.resume(r, row: "continue", keys: list.map(\.item.key), user: user, settings: settings, nav: nav) }
+                    }
+                }
+            }
+        case "newFilms" where !catalog.newFilms.isEmpty:
+            posterRow(id, "New films", "Recently added", catalog.newFilms)
+        case "topSeries" where !catalog.topSeries.isEmpty:
+            posterRow(id, "Top series", nil, catalog.topSeries)
+        case "mylist" where !user.myList.isEmpty:
+            posterRow(id, "My List", nil, user.myList)
+        default:
+            if id.hasPrefix("live:") { CountryRow(cc: String(id.dropFirst(5))) }
+        }
+    }
+
+    private func posterRow(_ id: String, _ title: String, _ sub: String?, _ items: [MediaItem]) -> some View {
+        let list = settings.ordered(id, items, key: { $0.key })
+        return VStack(alignment: .leading) {
+            RowTitle(title: title, sub: sub)
+            TileRow {
+                ForEach(list, id: \.key) { it in
+                    PosterTile(item: it, row: TileRowRef(id: id, keys: list.map(\.key)))
+                }
+            }
+        }
+    }
 }
 
 /// A film or episode being watched: its picture, the progress bar, a click resumes playback.
 struct ResumeTile: View {
     let point: ResumePoint
     let play: () -> Void
+    @EnvironmentObject var catalog: Catalog
+    /// A poster read from the provider when the saved entry has none (films started from a page without art).
+    @State private var fetched = ""
     var body: some View {
         Button(action: play) {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottomLeading) {
-                    MacImage(url: Img.url(point.item.img)) { MacTheme.tile }.frame(width: 124, height: 186).clipped()
+                    MacImage(url: Img.url(point.item.img.isEmpty ? fetched : point.item.img)) { MacTheme.tile }.frame(width: 124, height: 186).clipped()
                     ProgressLine(fraction: point.fraction).padding(8)
                 }
                 .frame(width: 124, height: 186).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -117,6 +132,10 @@ struct ResumeTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("resume:" + point.item.key)
+        .task(id: point.item.key) {
+            guard point.item.img.isEmpty, point.item.kind == .film || point.item.kind == .series, fetched.isEmpty else { return }
+            if let d = await catalog.details(point.item), !d.poster.isEmpty { fetched = d.poster }
+        }
     }
 }
 
@@ -124,6 +143,8 @@ struct ResumeTile: View {
 struct CountryRow: View {
     let cc: String
     @EnvironmentObject var catalog: Catalog
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var user: UserStore
     @EnvironmentObject var nav: MacNav
     @State private var items: [MediaItem] = []
     var body: some View {
@@ -135,70 +156,14 @@ struct CountryRow: View {
             }
             TileRow {
                 if items.isEmpty { ForEach(0..<8, id: \.self) { _ in Shimmer().frame(width: 150, height: 84) } }
-                ForEach(Array(items.enumerated()), id: \.element.key) { i, it in
-                    ChannelTile(item: it) { Player(nav: nav).play(it, list: items, index: i) }
+                let shown = settings.ordered("live:" + cc, items, key: { $0.key })
+                ForEach(Array(shown.enumerated()), id: \.element.key) { i, it in
+                    ChannelTile(item: it) { Player(nav: nav).play(it, list: shown, index: i) }
+                        .contextMenu { TileMenu.channel(it, cc: cc, row: "live:" + cc, keys: shown.map(\.key), user: user, settings: settings, nav: nav, play: { Player(nav: nav).play(it, list: shown, index: i) }) }
                 }
             }
         }
         .task(id: catalog.state == .ready) { if catalog.state == .ready { items = await catalog.countryRow(cc).items } }
-    }
-}
-
-// MARK: - Live TV
-
-struct LivePage: View {
-    let country: String
-    @EnvironmentObject var catalog: Catalog
-    @EnvironmentObject var settings: Settings
-    @EnvironmentObject var nav: MacNav
-    @State private var group: String = ""
-    @State private var channels: [MediaItem] = []
-
-    var body: some View {
-        if country.isEmpty {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    RowTitle(title: "Countries")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], alignment: .leading, spacing: 12) {
-                        ForEach(catalog.liveCountries, id: \.0) { c in
-                            Button { nav.go(.live(c.0)) } label: {
-                                HStack { Text(c.0).font(.system(size: 12, weight: .bold)).frame(width: 36); Text(Countries.name(c.0)); Spacer(); Text("\(c.1) groups").foregroundStyle(MacTheme.dim) }
-                                    .padding(.horizontal, 14).frame(height: 44).background(RoundedRectangle(cornerRadius: 8).fill(MacTheme.tile))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .padding(24)
-            }
-        } else {
-            let groups = catalog.liveGroups(country)
-            HStack(spacing: 0) {
-                List(groups, id: \.id, selection: Binding(get: { group.isEmpty ? groups.first?.id : group }, set: { group = $0 ?? "" })) { g in
-                    HStack { Text(Clean.titleCase(Clean.category(g.name))).lineLimit(1).foregroundStyle(Color.white.opacity(0.9)); Spacer()
-                        if let n = catalog.liveIndex[g.id]?.count { Text("\(n)").foregroundStyle(MacTheme.dim).monospacedDigit() } }
-                    .font(.system(size: 13))
-                    .tag(g.id)
-                    .accessibilityIdentifier("group:" + g.id)
-                }
-                .listStyle(.sidebar).scrollContentBackground(.hidden).background(MacTheme.sidebar.opacity(0.6))
-                .frame(width: 260)
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], alignment: .leading, spacing: 14) {
-                        ForEach(Array(channels.enumerated()), id: \.element.key) { i, it in
-                            ChannelTile(item: it) { Player(nav: nav).play(it, list: channels, index: i) }
-                        }
-                    }
-                    .padding(20)
-                }
-            }
-            .task(id: (group.isEmpty ? groups.first?.id : group) ?? "") {
-                guard let g = (group.isEmpty ? groups.first?.id : group) else { channels = []; return }
-                let label = Countries.name(country) + " · " + Clean.titleCase(Clean.category(groups.first { $0.id == g }?.name ?? ""))
-                channels = await catalog.channels(g).map { MediaItem(kind: .live, id: $0.id, name: $0.name, img: $0.icon, sub: label) }
-            }
-            .onChange(of: country) { _, _ in group = "" }
-        }
     }
 }
 
@@ -244,13 +209,42 @@ struct LibraryPage: View {
     }
 }
 
+/// My List before anything is saved: the same calm, centred style as the empty search.
+struct MyListEmptyState: View {
+    @EnvironmentObject var nav: MacNav
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle().fill(LinearGradient(colors: [Color(red: 0.83, green: 0.58, blue: 0.90).opacity(0.22), Color(red: 0.68, green: 0.86, blue: 0.56).opacity(0.10)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 104, height: 104)
+                Circle().strokeBorder(Color.white.opacity(0.10), lineWidth: 1).frame(width: 104, height: 104)
+                Image(systemName: "bookmark").font(.system(size: 40, weight: .medium)).foregroundStyle(.white.opacity(0.9))
+            }
+            VStack(spacing: 8) {
+                Text("Your list is empty").font(.system(size: 26, weight: .bold))
+                Text("Save films and series to watch them later.").font(.system(size: 14)).foregroundStyle(MacTheme.dim)
+            }
+            HStack(spacing: 6) {
+                Text("Right-click a poster, then choose").foregroundStyle(MacTheme.dim)
+                Label("Add to My List", systemImage: "plus").font(.system(size: 12, weight: .semibold)).padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.10)))
+            }.font(.system(size: 12.5))
+            HStack(spacing: 10) {
+                Button { nav.go(.films) } label: { Label("Browse films", systemImage: "film") }.buttonStyle(MacPill()).accessibilityIdentifier("mylist-empty:films")
+                Button { nav.go(.series) } label: { Label("Browse series", systemImage: "rectangle.stack") }.buttonStyle(MacPill()).accessibilityIdentifier("mylist-empty:series")
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 560)
+        .accessibilityIdentifier("mylist-empty")
+    }
+}
+
 struct MyListPage: View {
     @EnvironmentObject var user: UserStore
     var body: some View {
         ScrollView {
-            if user.myList.isEmpty {
-                Text("Titles you add with My List show here.").foregroundStyle(MacTheme.dim).padding(40)
-            }
+            if user.myList.isEmpty { MyListEmptyState() }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 124), spacing: 16)], alignment: .leading, spacing: 18) {
                 ForEach(user.myList, id: \.key) { PosterTile(item: $0) }
             }
@@ -263,6 +257,39 @@ struct MyListPage: View {
 
 /// Search across everything: channels, films and series of the chosen countries and languages and the added lists,
 /// then every other country and language with a badge. The same matching as the Apple TV app.
+/// Search before anything is typed: one calm, centred invitation instead of a line of instructions.
+struct SearchEmptyState: View {
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle().fill(LinearGradient(colors: [Color(red: 0.83, green: 0.58, blue: 0.90).opacity(0.22), Color(red: 0.68, green: 0.86, blue: 0.56).opacity(0.10)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 104, height: 104)
+                Circle().strokeBorder(Color.white.opacity(0.10), lineWidth: 1).frame(width: 104, height: 104)
+                Image(systemName: "magnifyingglass").font(.system(size: 40, weight: .medium)).foregroundStyle(.white.opacity(0.9))
+            }
+            VStack(spacing: 8) {
+                Text("Search your library").font(.system(size: 26, weight: .bold))
+                Text("Live, films and series, in every language.").font(.system(size: 14)).foregroundStyle(MacTheme.dim)
+            }
+            HStack(spacing: 10) {
+                ForEach([("dot.radiowaves.left.and.right", "Live"), ("film", "Films"), ("rectangle.stack", "Series")], id: \.1) { icon, label in
+                    Label(label, systemImage: icon).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white.opacity(0.75))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Capsule().fill(Color.white.opacity(0.06)))
+                }
+            }
+            HStack(spacing: 6) {
+                Text("Press").foregroundStyle(MacTheme.dim)
+                Text("⌘F").font(.system(size: 12, weight: .semibold, design: .rounded)).padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.10)))
+                Text("to start typing").foregroundStyle(MacTheme.dim)
+            }.font(.system(size: 12.5))
+        }
+        .frame(maxWidth: .infinity, minHeight: 560)
+    }
+}
+
 struct SearchPage: View {
     @EnvironmentObject var catalog: Catalog
     @EnvironmentObject var settings: Settings
@@ -276,7 +303,7 @@ struct SearchPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if nav.query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text("Type in the search field on the left (⌘F). Channels, films and series of every language.").foregroundStyle(MacTheme.dim)
+                    SearchEmptyState()
                 } else if results.allSatisfy(\.isEmpty) {
                     Text(busy || catalog.indexState == .loading ? "Searching the whole catalogue…" : "Nothing found for “\(nav.query)”").foregroundStyle(MacTheme.dim)
                 }

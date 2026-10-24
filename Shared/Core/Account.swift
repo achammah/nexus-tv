@@ -47,17 +47,60 @@ enum Keychain {
 }
 
 /// Every IPTV login the owner added. Kept in the Keychain as one item; the active id in UserDefaults.
-struct StoredAccount: Codable, Identifiable, Equatable {
+struct StoredAccount: Codable, Identifiable, Equatable, Sendable {
     var id: String
     var name: String
+    /// Xtream: the server · M3U: the playlist link · Portal: the portal link.
     var server: String
     var username: String
     var password: String
+    var type: SourceType = .xtream
+    /// M3U: the TV guide link (XMLTV), the one typed or the one the playlist header names.
+    var epg: String = ""
+    /// Portal: the MAC address.
+    var mac: String = ""
+    /// M3U over the keep limit: the groups the owner kept (nil = everything).
+    var groups: [String]? = nil
+    /// A line shown under the name in Sources ("Recognised as an Xtream link: full library").
+    var note: String = ""
     var account: Account { Account(server: server, username: username, password: password) }
+
+    init(id: String, name: String, server: String, username: String, password: String, type: SourceType = .xtream,
+         epg: String = "", mac: String = "", groups: [String]? = nil, note: String = "") {
+        self.id = id; self.name = name; self.server = server; self.username = username; self.password = password
+        self.type = type; self.epg = epg; self.mac = mac; self.groups = groups; self.note = note
+    }
+    // accounts saved by earlier builds have no type: they are Xtream logins
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        id = try c.decode(String.self, forKey: .id); name = try c.decode(String.self, forKey: .name)
+        server = try c.decode(String.self, forKey: .server)
+        username = try c.decodeIfPresent(String.self, forKey: .username) ?? ""
+        password = try c.decodeIfPresent(String.self, forKey: .password) ?? ""
+        type = try c.decodeIfPresent(SourceType.self, forKey: .type) ?? .xtream
+        epg = try c.decodeIfPresent(String.self, forKey: .epg) ?? ""
+        mac = try c.decodeIfPresent(String.self, forKey: .mac) ?? ""
+        groups = try c.decodeIfPresent([String].self, forKey: .groups)
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
+    enum K: String, CodingKey { case id, name, server, username, password, type, epg, mac, groups, note }
+
+    /// The adapter that reads this source.
+    func makeSource() -> LibrarySource? {
+        switch type {
+        case .xtream: return XtreamSource(account: account)
+        case .m3u:
+            guard let u = URL(string: Account(server: server, username: "x", password: "x").base) else { return nil }
+            return M3USource(url: u, epg: epg, keptGroups: groups)
+        case .portal: return PortalSource(base: server, mac: mac)
+        }
+    }
 }
 
 enum AccountVault {
     private static let service = "com.nexus.tv.accounts"
+    /// Debug captures: a window that shows sample sources must never write the shared Keychain.
+    static var readOnly = false
 
     static var activeId: String {
         get { UserDefaults.standard.string(forKey: "nx.activeAccount") ?? "default" }
@@ -72,13 +115,14 @@ enum AccountVault {
         if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data,
            let l = try? JSONDecoder().decode([StoredAccount].self, from: d), !l.isEmpty { return l }
         guard let a = Keychain.current() else { return [] }
-        let seed = [StoredAccount(id: "default", name: "My IPTV", server: a.server, username: a.username, password: a.password)]
+        let seed = [StoredAccount(id: "default", name: "My library", server: a.server, username: a.username, password: a.password)]
         save(seed)
         return seed
     }
 
     @discardableResult
     static func save(_ l: [StoredAccount]) -> Bool {
+        if readOnly { return true }
         guard let d = try? JSONEncoder().encode(l) else { return false }
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
         SecItemDelete(q as CFDictionary)
@@ -90,6 +134,7 @@ enum AccountVault {
 
     /// Forgets every account (test hook -NXResetAccounts YES, debug builds only).
     static func removeAll() {
+        if readOnly { return }
         SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
         Keychain.remove()
         UserDefaults.standard.removeObject(forKey: "nx.activeAccount")

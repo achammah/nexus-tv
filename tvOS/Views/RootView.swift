@@ -13,18 +13,22 @@ struct RootView: View {
     @State private var visited: Set<TabID> = []
     /// The opening plays over Home at launch (Home loads underneath); a new install plays it under the account form.
     @State private var opening = OpeningGate.enabled
+    @StateObject private var onboard = OnboardingModel.fromLaunch()
+    /// The first-launch screen, "Add a source", a check in progress, or a debug capture.
+    private var showsOnboarding: Bool { catalog.showsOnboarding || catalog.addingSource || onboard.isActive }
 
     var body: some View {
         let _ = Metrics.shared.count("RootView")
         ZStack(alignment: .topLeading) {
             Color.black
+            Group {
             // Tabs stay alive once opened so each keeps its place; hidden ones are disabled (not focusable).
             ForEach(TabID.allCases) { t in
                 if visited.contains(t) || t == nav.tab {
                     let on = t == nav.tab && nav.detail.isEmpty && nav.browse.isEmpty
                     screen(t)
                         .opacity(on ? 1 : 0)
-                        .disabled(!on || catalog.needsAccount || opening)   // the opening holds the remote until it ends or is skipped
+                        .disabled(!on || showsOnboarding || opening)   // the opening holds the remote until it ends or is skipped
                         .accessibilityHidden(!on)
                 }
             }
@@ -33,13 +37,13 @@ struct RootView: View {
                 let top = i == nav.browse.count - 1 && nav.detail.isEmpty
                 BrowseTVPage(ref: b, top: top).id(b)
                     .opacity(top ? 1 : 0)
-                    .disabled(!top || catalog.needsAccount || opening)
+                    .disabled(!top || showsOnboarding || opening)
                     .accessibilityHidden(!top)
             }
             if let d = nav.detail.last {
                 DetailView(item: d).id(d.key)
             }
-            header.disabled(catalog.needsAccount || opening)
+            header.disabled(showsOnboarding || opening)
             if case .failed(let msg) = catalog.state, nav.tab != .settings, !catalog.needsAccount {
                 Text(msg).font(.ui(24)).foregroundStyle(.white.opacity(0.7))
                     .padding(.horizontal, 30).padding(.vertical, 16).background(Capsule().fill(Theme.glass))
@@ -55,8 +59,24 @@ struct RootView: View {
                     .padding(.trailing, Theme.x0).padding(.bottom, 40)
                     .allowsHitTesting(false)
             }
-            if catalog.needsAccount { OnboardingView() }
-            if opening && !catalog.needsAccount { OpeningOverlay { opening = false } }
+            }
+            // Home rises from a slight zoom and blur while the two halves slide apart (about 1.2 s)
+            .opacity(showsOnboarding && !onboard.ending ? 0 : 1)
+            .scaleEffect(onboard.ending || !showsOnboarding ? 1 : 1.06)
+            .blur(radius: onboard.ending || !showsOnboarding ? 0 : 14)
+            .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 1.2).delay(0.2), value: onboard.ending)
+            .animation(.easeOut(duration: 0.9).delay(0.25), value: showsOnboarding && !onboard.ending)
+            if catalog.needsAccount && catalog.onboardingSkipped && !catalog.addingSource && !onboard.isActive && nav.tab != .settings {
+                // after "Skip for now": Home and the other screens say the library is empty
+                ZStack { Color.black; LibraryEmptyState { catalog.onboardingSkipped = false } }.padding(.top, 128)
+            }
+            if showsOnboarding { OnboardingView(model: onboard).transition(.opacity) }
+            if let st = catalog.picker { GroupPickerView(state: st).frame(width: 1920, height: 1080) }
+            if let f = catalog.streamProgress {
+                GeometryReader { g in Rectangle().fill(LinearGradient(colors: [Color(red: 211 / 255, green: 148 / 255, blue: 230 / 255), Color(red: 174 / 255, green: 219 / 255, blue: 142 / 255)], startPoint: .leading, endPoint: .trailing)).frame(width: g.size.width * f, height: 3) }
+                    .frame(height: 3).frame(maxHeight: .infinity, alignment: .top).allowsHitTesting(false)
+            }
+            if opening && !catalog.needsAccount && !onboard.isActive { OpeningOverlay { opening = false } }
             if let t = toaster.text {
                 Toast(text: t).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).padding(.bottom, 80)
                     .transition(.opacity).allowsHitTesting(false)

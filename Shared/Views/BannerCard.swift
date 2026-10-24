@@ -41,7 +41,7 @@ struct BannerModel: Hashable {
     var countText: String { count.map { Browse.count($0, unit) } ?? "" }
     /// The first picture: its colour tints the wash.
     var tintSource: String? {
-        switch art { case .logo(let u, _): u; case .posters(let p): p.first; case .channels(let c): c.first; case .type: nil }
+        switch art { case .logo(let u, _): u; case .posters(let p): p.first; case .channels(let c): c.first.map { String($0.split(separator: "\u{1F}", maxSplits: 1, omittingEmptySubsequences: false).last ?? "") }; case .type: nil }
     }
 }
 
@@ -159,8 +159,8 @@ struct BannerCard: View {
             .scaleEffect(1.04)
         case .channels(let c):
             LazyVGrid(columns: [GridItem(.fixed(82 * k), spacing: 6 * k), GridItem(.fixed(82 * k), spacing: 6 * k)], spacing: 6 * k) {
-                ForEach(Array(c.prefix(6).enumerated()), id: \.offset) { _, u in
-                    ArtImage(url: URL(string: u), fill: false)
+                ForEach(Array(c.prefix(6).enumerated()), id: \.offset) { _, t in
+                    MosaicLogo(tile: t)
                         .frame(width: 62 * k, height: 28 * k).frame(width: 82 * k, height: (h - 32 * k) / 3)
                         .background(RoundedRectangle(cornerRadius: 6 * k).fill(Color(red: 31 / 255, green: 33 / 255, blue: 40 / 255)))
                 }
@@ -224,10 +224,24 @@ enum BannerModels {
         if let logo = Browse.liveLogos[l.label] {
             return BannerModel(art: .logo(logo, dark: false), name: l.label, count: l.count, unit: "channel", logoIsName: true, muted: l.muted)
         }
-        if l.family == Browse.LiveFamily.ev.rawValue || l.family == Browse.LiveFamily.reg.rawValue {
-            return BannerModel(art: .type, name: l.label, count: l.count, unit: "channel", muted: l.muted)
+        // name + provider icon per tile ("name\u{1F}icon"): each tile resolves its logo the way the channel grid does
+        // (own icon, then twin, bundled map, iptv-org), so a dead provider link no longer leaves the tile empty.
+        let chans = l.ids.flatMap { catalog.liveIndex[$0] ?? [] }
+        let picked = (chans.filter { !$0.icon.isEmpty } + chans.filter { $0.icon.isEmpty }).prefix(6)
+        let tiles = picked.map { $0.name + "\u{1F}" + $0.icon }
+        return BannerModel(art: tiles.isEmpty ? .type : .channels(Array(tiles)), name: l.label, count: l.count, unit: "channel", muted: l.muted)
+    }
+}
+
+
+/// One logo of a banner mosaic: "name\u{1F}icon", resolved like a channel tile; nothing found leaves the tile plain.
+private struct MosaicLogo: View {
+    let tile: String
+    var body: some View {
+        let parts = tile.split(separator: "\u{1F}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let name = parts.first ?? "", icon = parts.count > 1 ? parts[1] : ""
+        ChannelLogoResolver(name: name, icon: icon, sub: "", maxPixel: 200) { logo in
+            if case .image(let cg) = logo { Image(decorative: cg, scale: 1).resizable().aspectRatio(contentMode: .fit) } else { Color.clear }
         }
-        let logos = l.ids.flatMap { catalog.liveIndex[$0] ?? [] }.map(\.icon).filter { !$0.isEmpty }
-        return BannerModel(art: logos.isEmpty ? .type : .channels(Array(logos.prefix(6))), name: l.label, count: l.count, unit: "channel", muted: l.muted)
     }
 }

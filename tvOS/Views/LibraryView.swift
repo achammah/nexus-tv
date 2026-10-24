@@ -153,7 +153,19 @@ struct MyListView: View {
                     if !user.myList.isEmpty { Text("\(user.myList.count) titles").font(.ui(26)).foregroundStyle(.white.opacity(0.45)) }
                 }
                 if user.myList.isEmpty {
-                    EmptyNote(text: "Your list is empty. Choose + My List on any channel, film or series.").padding(.top, 40)
+                    VStack(spacing: 26) {
+                        ZStack {
+                            Circle().fill(LinearGradient(colors: [Color(red: 0.83, green: 0.58, blue: 0.90).opacity(0.22), Color(red: 0.68, green: 0.86, blue: 0.56).opacity(0.10)],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 170, height: 170)
+                            Circle().strokeBorder(Color.white.opacity(0.10), lineWidth: 1.5).frame(width: 170, height: 170)
+                            Image(systemName: "bookmark").font(.system(size: 64, weight: .medium)).foregroundStyle(.white.opacity(0.9))
+                        }
+                        Text("Your list is empty").font(.ui(44, .bold))
+                        Text("Choose + My List on any channel, film or series to save it here.").font(.ui(26)).foregroundStyle(.white.opacity(0.55))
+                    }
+                    .frame(maxWidth: .infinity).padding(.top, 150)
+                    .accessibilityIdentifier("mylist-empty")
                 } else {
                     PosterGrid(items: user.myList, columns: 8, w: 180, h: 270, gx: 30, gy: 26, topInset: 34) { it in
                         if it.kind == .live { nav.play(it, list: [it], subtitle: "My List") } else { nav.open(it) }

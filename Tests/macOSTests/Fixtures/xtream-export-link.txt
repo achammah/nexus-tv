@@ -1,0 +1,1 @@
+http://panel.example.invalid:8080/get.php?type=m3u_plus&username=demo_user&password=demo_pass&output=ts

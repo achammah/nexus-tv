@@ -1,13 +1,15 @@
 import SwiftUI
 import AppKit
 
-/// Layout 1a: a fixed 240 px source list on the left (search, library, Live TV by country, account, settings),
+/// Layout 1a: a fixed 240 px source list on the left (search, library, Live by country, sources, settings),
 /// a toolbar with back / forward and the page title, and the page on the right.
 struct LibraryWindow: View {
     @EnvironmentObject var catalog: Catalog
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var nav: MacNav
-    @State private var onboarding = false
+    @StateObject private var onboard = OnboardingModel.fromLaunch()
+    /// The first-launch screen comes in once the opening has played (at once when there is no opening).
+    @State private var onboardingReady = !OpeningGate.enabled
     @State private var window = WindowRef()
     /// The opening plays over the window at launch (the library loads underneath). A new install plays it
     /// whole and the account sheet comes in over its last frame.
@@ -22,7 +24,9 @@ struct LibraryWindow: View {
                 Toolbar()
                 Rectangle().fill(Color(red: 31 / 255, green: 31 / 255, blue: 35 / 255)).frame(height: 1)
                 Group {
-                    if catalog.needsAccount { Color.clear }       // the account sheet sits over an empty window
+                    if catalog.needsAccount && !(nav.page == .account || nav.page == .settings) {
+                        LibraryEmptyState { catalog.onboardingSkipped = false }      // after "Skip for now"
+                    }
                     else if let d = nav.detail { DetailPage(item: d).id(d.key) } else { page }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -31,6 +35,12 @@ struct LibraryWindow: View {
             .background(MacTheme.window)
         }
         .disabled(nav.playing != nil)
+        .opacity(showsOnboarding && !onboard.ending ? 0 : 1)
+        // Home rises from a slight zoom and blur while the two halves slide apart (about 1.2 s)
+        .scaleEffect(onboard.ending || !showsOnboarding ? 1 : 1.06)
+        .blur(radius: onboard.ending || !showsOnboarding ? 0 : 14)
+        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 1.2).delay(0.2), value: onboard.ending)
+        .animation(.easeOut(duration: 0.9).delay(0.25), value: showsOnboarding && !onboard.ending)
         // the player fills the whole window (sidebar and toolbar hidden); the page stays underneath
         if let p = nav.playing {
             MacPlayerView(start: p, window: window) { nav.closePlayer() }
@@ -42,21 +52,42 @@ struct LibraryWindow: View {
         } else if opening {
             OpeningOverlay { opening = false }
         }
+        if showsOnboarding {
+            OnboardingScreen(model: onboard, skipLabel: addMode ? "Cancel" : "Skip for now", addMode: addMode, skip: skipOnboarding, submit: submitOnboarding)
+                .background(Color(red: 11 / 255, green: 11 / 255, blue: 13 / 255).opacity(onboard.ending ? 0 : 1))
+                .transition(.opacity)
+        }
+        if let st = catalog.picker { GroupPickerView(state: st).transition(.opacity) }
         }
         .animation(.easeOut(duration: 0.2), value: nav.playing)
+        .animation(.easeOut(duration: 0.6), value: showsOnboarding)
         .background(MacTheme.window)
         .background(WindowAccessor(ref: window))
         .ignoresSafeArea()
         .task { launchHooks() }
-        .sheet(isPresented: $onboarding) { AccountSheet(firstLaunch: true) { onboarding = false } }
-        .onAppear {
-            guard catalog.needsAccount else { return }
-            if OpeningGate.enabled {
-                guard OpeningGate.frozenFrame == nil else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + OpeningSpec.homeAt) { onboarding = catalog.needsAccount }
-            } else { onboarding = true }
+        // warm the pinned countries' channel logos in the background so Live and Home open with their tiles filled
+        .task(id: catalog.state == .ready) {
+            guard catalog.state == .ready else { return }
+            await catalog.ensureLiveIndex()
+            let chans = settings.countries.flatMap { cc in catalog.liveGroups(cc).flatMap { catalog.liveIndex[$0.id] ?? [] } }
+            ChannelLogos.shared.prefetch(chans)
         }
-        .onChange(of: catalog.needsAccount) { _, n in onboarding = n }
+        .onAppear {
+            guard catalog.needsAccount, OpeningGate.enabled else { return }
+            if OpeningGate.frozenFrame != nil { onboardingReady = true; return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + OpeningSpec.homeAt) { onboardingReady = true }
+        }
+    }
+
+    private var addMode: Bool { onboard.lockedAdd ?? (!catalog.needsAccount && !onboard.frozen) }
+    /// The first-launch screen (no source, not skipped), "Add a source", a check in progress, or a debug capture.
+    private var showsOnboarding: Bool { (onboardingReady && catalog.showsOnboarding) || catalog.addingSource || onboard.isActive }
+    private func skipOnboarding() {
+        if onboard.frozen { return }
+        if addMode { catalog.addingSource = false; onboard.reset() } else { catalog.onboardingSkipped = true }
+    }
+    private func submitOnboarding() {
+        onboard.submit(catalog: catalog, languages: settings.languages, addMode: addMode) { catalog.addingSource = false }
     }
 
     /// Launch arguments for tests and screenshots: -NXWindowSize 1440x900, -NXPlay kind:id[:ext] with -NXName,
@@ -91,7 +122,7 @@ struct LibraryWindow: View {
     @ViewBuilder private var page: some View {
         switch nav.page {
         case .home: HomePage()
-        case .live(let cc): if cc.isEmpty { LivePage(country: cc) } else { LiveBrowsePage(country: cc) }
+        case .live(let cc): if cc.isEmpty { LivePage() } else { LiveBrowsePage(country: cc) }
         case .films: BrowsePage(kind: .film)
         case .series: BrowsePage(kind: .series)
         case .list(let r): BrowseListPage(ref: r)
@@ -105,7 +136,11 @@ struct LibraryWindow: View {
 
     /// Search index after sign-in, and load errors: a small line at the bottom, nothing waits for it.
     @ViewBuilder private var statusLine: some View {
-        if let p = catalog.indexProgress {
+        if let f = catalog.streamProgress {
+            // the rest of a big playlist loads while the owner browses: a thin line at the top
+            GeometryReader { g in Rectangle().fill(LinearGradient(colors: [Color(red: 211 / 255, green: 148 / 255, blue: 230 / 255), Color(red: 174 / 255, green: 219 / 255, blue: 142 / 255)], startPoint: .leading, endPoint: .trailing)).frame(width: g.size.width * f, height: 2) }
+                .frame(height: 2).frame(maxHeight: .infinity, alignment: .top)
+        } else if let p = catalog.indexProgress {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text(p).font(.system(size: 12)) }
                 .padding(.horizontal, 14).padding(.vertical, 6).background(Capsule().fill(Color.black.opacity(0.85)))
                 .padding(.bottom, 14)
@@ -167,18 +202,18 @@ private struct Sidebar: View {
 
             heading("Library")
             item("house", "Home", .home)
-            item("tv", "Live TV", .live(""))
+            item("tv", "Live", .live(""))
             item("film", "Films", .films)
             item("rectangle.stack", "Series", .series)
             item("bookmark", "My List", .mylist)
 
-            heading("Live TV by country")
+            heading("Pinned")
             ForEach(settings.countries, id: \.self) { cc in
-                CountrySideRow(code: cc, name: Countries.name(cc), count: count(cc), selected: nav.detail == nil && nav.page.root == .live(cc)) { nav.go(.live(cc)) }
+                CountrySideRow(code: cc, name: CountryNames.name(cc), flag: CountryNames.flagAsset(cc), count: count(cc), selected: nav.detail == nil && nav.page.root == .live(cc)) { nav.go(.live(cc)) }
             }
             Spacer()
             Rectangle().fill(MacTheme.line).frame(height: 1).padding(.bottom, 8)
-            item("person", "IPTV account", .account)
+            item("link", "Sources", .account)
             item("gearshape", "Settings", .settings, trailing: "⌘,")
         }
         .padding(.horizontal, 12).padding(.top, 52).padding(.bottom, 12)
@@ -227,13 +262,17 @@ private struct Sidebar: View {
 /// One "Live TV by country" row: code, name, channel count. On the white selection every part turns dark
 /// (the code and the count were white on white before).
 struct CountrySideRow: View {
-    let code: String, name: String, count: String
+    let code: String, name: String, flag: String?, count: String
     let selected: Bool
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                Text(code).font(.system(size: 11, weight: .bold)).foregroundStyle(selected ? Color.black.opacity(0.55) : MacTheme.dim).frame(width: 22)
+                Group {
+                    if let flag { RoundFlag(asset: flag, size: 18) }
+                    else { Text(code).font(.system(size: 11, weight: .bold)).foregroundStyle(selected ? Color.black.opacity(0.55) : MacTheme.dim) }
+                }
+                .frame(width: 22)
                 Text(name)
                 Spacer()
                 Text(count).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(selected ? Color.black.opacity(0.55) : MacTheme.dim)

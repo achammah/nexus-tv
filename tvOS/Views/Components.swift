@@ -43,44 +43,16 @@ struct LivePill: View {
     }
 }
 
-// MARK: - Remote images: in-memory cache, decoded off the main thread, name tile when missing
+// MARK: - Remote images: the shared loader (Shared/Core/ImageLoader.swift), name tile when missing
 
+/// Apple TV wrapper over the shared loader; kept for BannerCard.
 final class ImageStore {
     static let shared = ImageStore()
-    private let cache = NSCache<NSURL, UIImage>()
-    private let failed = NSCache<NSURL, NSNumber>()
-    private let session: URLSession = {
-        let c = URLSessionConfiguration.default
-        c.urlCache = URLCache(memoryCapacity: 64 << 20, diskCapacity: 512 << 20)
-        c.requestCachePolicy = .returnCacheDataElseLoad
-        c.timeoutIntervalForRequest = 12
-        c.httpMaximumConnectionsPerHost = 6
-        return URLSession(configuration: c)
-    }()
-    init() { cache.countLimit = 600 }
-
-    func cached(_ url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+    func cached(_ url: URL, maxPixel: CGFloat = 600) -> UIImage? {
+        ImageLoader.shared.cached(url, maxPixel: maxPixel).map { UIImage(cgImage: $0) }
+    }
     func load(_ url: URL, maxPixel: CGFloat) async -> UIImage? {
-        if let i = cache.object(forKey: url as NSURL) { return i }
-        if failed.object(forKey: url as NSURL) != nil { return nil }
-        guard let (d, r) = try? await session.data(from: url),
-              (r as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else {
-            failed.setObject(1, forKey: url as NSURL); return nil
-        }
-        let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-            guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return nil }
-            let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel,
-                                         kCGImageSourceCreateThumbnailWithTransform: true]
-            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
-            // draw once here so the main thread never decodes a picture
-            let ctx = CGContext(data: nil, width: cg.width, height: cg.height, bitsPerComponent: 8, bytesPerRow: 0,
-                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-            ctx?.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
-            if let decoded = ctx?.makeImage() { return UIImage(cgImage: decoded) }
-            return UIImage(cgImage: cg)
-        }.value
-        if let img { cache.setObject(img, forKey: url as NSURL) } else { failed.setObject(1, forKey: url as NSURL) }
-        return img
+        await ImageLoader.shared.image(url, maxPixel: maxPixel).map { UIImage(cgImage: $0) }
     }
 }
 
@@ -89,23 +61,25 @@ struct RemoteImage<Fallback: View>: View {
     var maxPixel: CGFloat = 600
     var mode: ContentMode = .fill
     @ViewBuilder var fallback: () -> Fallback
-    @State private var image: UIImage?
+    @State private var image: CGImage?
 
     var body: some View {
         let _ = Metrics.shared.count("RemoteImage")
         ZStack {
             if let image {
-                Image(uiImage: image).resizable().aspectRatio(contentMode: mode).transition(.opacity)
+                Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: mode).transition(.opacity)
             } else {
                 fallback()
             }
         }
         .task(id: url) {
             guard let url else { image = nil; return }
-            if let c = ImageStore.shared.cached(url) { image = c; return }
+            if let c = ImageLoader.shared.cached(url, maxPixel: maxPixel) { image = c; return }
             image = nil
-            let i = await ImageStore.shared.load(url, maxPixel: maxPixel)
+            let i = await ImageLoader.shared.image(url, maxPixel: maxPixel)
             withAnimation(.easeOut(duration: 0.12)) { image = i }
+            // a failed picture is tried again once the loader has forgotten the failure
+            if i == nil, (try? await Task.sleep(for: .seconds(62))) != nil { image = await ImageLoader.shared.image(url, maxPixel: maxPixel) }
         }
     }
 }
@@ -204,8 +178,14 @@ struct TileFace: View {
         ZStack(alignment: .bottomLeading) {
             Theme.tile
             if shape == .logo {
-                RemoteImage(url: Img.url(item.img), maxPixel: 400, mode: .fit) { nameLabel }
-                    .padding(.horizontal, w * 0.18).padding(.vertical, h * 0.14)
+                ChannelLogoResolver(name: item.name, icon: item.img, sub: item.sub, maxPixel: 400) { logo in
+                    switch logo {
+                    case .image(let cg): Image(decorative: cg, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                                            .padding(.horizontal, w * 0.18).padding(.vertical, h * 0.14)
+                    case .loading: Color.clear
+                    case .none: WordmarkTile(name: item.name, w: w, h: h, radius: 0)
+                    }
+                }
             } else {
                 RemoteImage(url: Img.url(item.img, .poster), maxPixel: 500, mode: .fill) { nameLabel }
                     .frame(width: w, height: h).clipped()
@@ -252,10 +232,14 @@ struct LogoBox: View {
     var body: some View {
         ZStack {
             Theme.logoBg
-            RemoteImage(url: Img.url(icon), maxPixel: 300, mode: .fit) {
-                Text(Clean.initials(name)).font(.ui(font, .heavy)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
+            ChannelLogoResolver(name: name, icon: icon, sub: "", maxPixel: 300) { logo in
+                switch logo {
+                case .image(let cg): Image(decorative: cg, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                                        .padding(.horizontal, w * 0.08).padding(.vertical, h * 0.08)
+                case .loading: Color.clear
+                case .none: WordmarkTile(name: name, w: w, h: h, radius: 0)
+                }
             }
-            .padding(.horizontal, w * 0.08).padding(.vertical, h * 0.08)
         }
         .frame(width: w, height: h)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))

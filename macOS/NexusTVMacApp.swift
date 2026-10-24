@@ -27,7 +27,7 @@ struct NexusTVMacApp: App {
         if let f = ProcessInfo.processInfo.environment["NXTV_SEED_ACCOUNT_FILE"], AccountVault.list().isEmpty,
            let t = try? String(contentsOfFile: (f as NSString).expandingTildeInPath, encoding: .utf8) {
             let l = t.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            if l.count >= 3 { AccountVault.save([StoredAccount(id: "default", name: "My IPTV", server: Account(server: l[0], username: l[1], password: l[2]).base, username: l[1], password: l[2])]) }
+            if l.count >= 3 { AccountVault.save([StoredAccount(id: "default", name: "My library", server: Account(server: l[0], username: l[1], password: l[2]).base, username: l[1], password: l[2])]) }
         }
         #endif
         Metrics.shared.start()          // only with -NXMetrics YES
@@ -80,8 +80,8 @@ final class MacNav: ObservableObject {
         case list(BrowseRef), family(BrowseRef)
         var title: String {
             switch self {
-            case .home: "Home"; case .live(let cc): cc.isEmpty ? "Live TV" : Countries.name(cc); case .films: "Films"
-            case .series: "Series"; case .mylist: "My List"; case .search: "Search"; case .account: "IPTV account"; case .settings: "Settings"
+            case .home: "Home"; case .live(let cc): cc.isEmpty ? "Live" : CountryNames.name(cc); case .films: "Films"
+            case .series: "Series"; case .mylist: "My List"; case .search: "Search"; case .account: "Sources"; case .settings: "Settings"
             case .list(let r), .family(let r): r.title
             }
         }

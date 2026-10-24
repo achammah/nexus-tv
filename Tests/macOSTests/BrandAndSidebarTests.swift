@@ -26,9 +26,9 @@ final class BrandAndSidebarTests: XCTestCase {
 
     /// The selected country row: its code and its count must be visible on the white selection.
     func testSelectedCountryRowShowsCodeAndCount() {
-        let full = pixels(CountrySideRow(code: "BE", name: "Belgium", count: "542", selected: true) {})
-        let noCode = pixels(CountrySideRow(code: "", name: "Belgium", count: "542", selected: true) {})
-        let noCount = pixels(CountrySideRow(code: "BE", name: "Belgium", count: "", selected: true) {})
+        let full = pixels(CountrySideRow(code: "BE", name: "Belgium", flag: nil, count: "542", selected: true) {})
+        let noCode = pixels(CountrySideRow(code: "", name: "Belgium", flag: nil, count: "542", selected: true) {})
+        let noCount = pixels(CountrySideRow(code: "BE", name: "Belgium", flag: nil, count: "", selected: true) {})
         XCTAssertGreaterThan(changed(full, noCode), 40, "the code BE shows on the selected row")
         XCTAssertGreaterThan(changed(full, noCount), 40, "the count 542 shows on the selected row")
     }

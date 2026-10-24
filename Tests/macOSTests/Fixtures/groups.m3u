@@ -1,0 +1,181 @@
+#EXTM3U
+#EXTINF:-1 group-title="Alpha",Alpha 0
+http://stream.example.invalid/live/Alpha0.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 1
+http://stream.example.invalid/live/Alpha1.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 2
+http://stream.example.invalid/live/Alpha2.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 3
+http://stream.example.invalid/live/Alpha3.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 4
+http://stream.example.invalid/live/Alpha4.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 5
+http://stream.example.invalid/live/Alpha5.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 6
+http://stream.example.invalid/live/Alpha6.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 7
+http://stream.example.invalid/live/Alpha7.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 8
+http://stream.example.invalid/live/Alpha8.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 9
+http://stream.example.invalid/live/Alpha9.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 10
+http://stream.example.invalid/live/Alpha10.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 11
+http://stream.example.invalid/live/Alpha11.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 12
+http://stream.example.invalid/live/Alpha12.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 13
+http://stream.example.invalid/live/Alpha13.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 14
+http://stream.example.invalid/live/Alpha14.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 15
+http://stream.example.invalid/live/Alpha15.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 16
+http://stream.example.invalid/live/Alpha16.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 17
+http://stream.example.invalid/live/Alpha17.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 18
+http://stream.example.invalid/live/Alpha18.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 19
+http://stream.example.invalid/live/Alpha19.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 20
+http://stream.example.invalid/live/Alpha20.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 21
+http://stream.example.invalid/live/Alpha21.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 22
+http://stream.example.invalid/live/Alpha22.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 23
+http://stream.example.invalid/live/Alpha23.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 24
+http://stream.example.invalid/live/Alpha24.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 25
+http://stream.example.invalid/live/Alpha25.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 26
+http://stream.example.invalid/live/Alpha26.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 27
+http://stream.example.invalid/live/Alpha27.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 28
+http://stream.example.invalid/live/Alpha28.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 29
+http://stream.example.invalid/live/Alpha29.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 30
+http://stream.example.invalid/live/Alpha30.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 31
+http://stream.example.invalid/live/Alpha31.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 32
+http://stream.example.invalid/live/Alpha32.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 33
+http://stream.example.invalid/live/Alpha33.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 34
+http://stream.example.invalid/live/Alpha34.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 35
+http://stream.example.invalid/live/Alpha35.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 36
+http://stream.example.invalid/live/Alpha36.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 37
+http://stream.example.invalid/live/Alpha37.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 38
+http://stream.example.invalid/live/Alpha38.m3u8
+#EXTINF:-1 group-title="Alpha",Alpha 39
+http://stream.example.invalid/live/Alpha39.m3u8
+#EXTINF:-1 group-title="Beta",Beta 0
+http://stream.example.invalid/live/Beta0.m3u8
+#EXTINF:-1 group-title="Beta",Beta 1
+http://stream.example.invalid/live/Beta1.m3u8
+#EXTINF:-1 group-title="Beta",Beta 2
+http://stream.example.invalid/live/Beta2.m3u8
+#EXTINF:-1 group-title="Beta",Beta 3
+http://stream.example.invalid/live/Beta3.m3u8
+#EXTINF:-1 group-title="Beta",Beta 4
+http://stream.example.invalid/live/Beta4.m3u8
+#EXTINF:-1 group-title="Beta",Beta 5
+http://stream.example.invalid/live/Beta5.m3u8
+#EXTINF:-1 group-title="Beta",Beta 6
+http://stream.example.invalid/live/Beta6.m3u8
+#EXTINF:-1 group-title="Beta",Beta 7
+http://stream.example.invalid/live/Beta7.m3u8
+#EXTINF:-1 group-title="Beta",Beta 8
+http://stream.example.invalid/live/Beta8.m3u8
+#EXTINF:-1 group-title="Beta",Beta 9
+http://stream.example.invalid/live/Beta9.m3u8
+#EXTINF:-1 group-title="Beta",Beta 10
+http://stream.example.invalid/live/Beta10.m3u8
+#EXTINF:-1 group-title="Beta",Beta 11
+http://stream.example.invalid/live/Beta11.m3u8
+#EXTINF:-1 group-title="Beta",Beta 12
+http://stream.example.invalid/live/Beta12.m3u8
+#EXTINF:-1 group-title="Beta",Beta 13
+http://stream.example.invalid/live/Beta13.m3u8
+#EXTINF:-1 group-title="Beta",Beta 14
+http://stream.example.invalid/live/Beta14.m3u8
+#EXTINF:-1 group-title="Beta",Beta 15
+http://stream.example.invalid/live/Beta15.m3u8
+#EXTINF:-1 group-title="Beta",Beta 16
+http://stream.example.invalid/live/Beta16.m3u8
+#EXTINF:-1 group-title="Beta",Beta 17
+http://stream.example.invalid/live/Beta17.m3u8
+#EXTINF:-1 group-title="Beta",Beta 18
+http://stream.example.invalid/live/Beta18.m3u8
+#EXTINF:-1 group-title="Beta",Beta 19
+http://stream.example.invalid/live/Beta19.m3u8
+#EXTINF:-1 group-title="Beta",Beta 20
+http://stream.example.invalid/live/Beta20.m3u8
+#EXTINF:-1 group-title="Beta",Beta 21
+http://stream.example.invalid/live/Beta21.m3u8
+#EXTINF:-1 group-title="Beta",Beta 22
+http://stream.example.invalid/live/Beta22.m3u8
+#EXTINF:-1 group-title="Beta",Beta 23
+http://stream.example.invalid/live/Beta23.m3u8
+#EXTINF:-1 group-title="Beta",Beta 24
+http://stream.example.invalid/live/Beta24.m3u8
+#EXTINF:-1 group-title="Beta",Beta 25
+http://stream.example.invalid/live/Beta25.m3u8
+#EXTINF:-1 group-title="Beta",Beta 26
+http://stream.example.invalid/live/Beta26.m3u8
+#EXTINF:-1 group-title="Beta",Beta 27
+http://stream.example.invalid/live/Beta27.m3u8
+#EXTINF:-1 group-title="Beta",Beta 28
+http://stream.example.invalid/live/Beta28.m3u8
+#EXTINF:-1 group-title="Beta",Beta 29
+http://stream.example.invalid/live/Beta29.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 0
+http://stream.example.invalid/live/Gamma0.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 1
+http://stream.example.invalid/live/Gamma1.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 2
+http://stream.example.invalid/live/Gamma2.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 3
+http://stream.example.invalid/live/Gamma3.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 4
+http://stream.example.invalid/live/Gamma4.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 5
+http://stream.example.invalid/live/Gamma5.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 6
+http://stream.example.invalid/live/Gamma6.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 7
+http://stream.example.invalid/live/Gamma7.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 8
+http://stream.example.invalid/live/Gamma8.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 9
+http://stream.example.invalid/live/Gamma9.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 10
+http://stream.example.invalid/live/Gamma10.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 11
+http://stream.example.invalid/live/Gamma11.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 12
+http://stream.example.invalid/live/Gamma12.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 13
+http://stream.example.invalid/live/Gamma13.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 14
+http://stream.example.invalid/live/Gamma14.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 15
+http://stream.example.invalid/live/Gamma15.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 16
+http://stream.example.invalid/live/Gamma16.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 17
+http://stream.example.invalid/live/Gamma17.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 18
+http://stream.example.invalid/live/Gamma18.m3u8
+#EXTINF:-1 group-title="Gamma",Gamma 19
+http://stream.example.invalid/live/Gamma19.m3u8

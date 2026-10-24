@@ -90,6 +90,17 @@ struct LiveBrowsePage: View {
 
     var body: some View {
         let live = Browse.live(catalog.liveGroups(country), counts: catalog.liveCounts)
+        let every = live.shelves.flatMap(\.lists) + live.hidden
+        // One list only: skip the shelf page and show its channels straight away.
+        if every.count == 1, let only = every.first {
+            BrowseListPage(ref: BrowseRef(kind: .live, ids: only.ids, title: only.label, cc: country))
+                .task { await catalog.ensureLiveIndex() }
+        } else {
+            shelves(live)
+        }
+    }
+
+    private func shelves(_ live: Browse.Live) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
                 ForEach(live.shelves) { shelf in
@@ -123,6 +134,16 @@ struct BrowseFamilyPage: View {
     @EnvironmentObject var nav: MacNav
 
     var body: some View {
+        let all = models
+        // One list only (a service with a single list): open it straight away.
+        if all.count == 1, let (l, m) = all.first {
+            BrowseListPage(ref: BrowseRef(kind: ref.kind, ids: l.ids, title: m.name == l.label ? l.label : ref.title + " · " + m.name, cc: ref.cc))
+        } else {
+            grid(all)
+        }
+    }
+
+    private func grid(_ models: [(Browse.List, BannerModel)]) -> some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 288, maximum: 288), spacing: 18)], alignment: .leading, spacing: 18) {
                 ForEach(models, id: \.0.id) { l, m in

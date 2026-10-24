@@ -69,6 +69,12 @@ final class Catalog: ObservableObject {
     /// While the search index is built from scratch (first launch, new account): what it is on, for a small line on screen.
     @Published private(set) var indexProgress: String? = nil
     var needsAccount: Bool { accounts.isEmpty }
+    /// The first-launch screen shows when there is no source and the owner did not skip it (or a debug capture asks for it).
+    var showsOnboarding: Bool { (needsAccount && !onboardingSkipped) || forcedOnboarding }
+    @Published var forcedOnboarding = false
+    /// "Add a source" from Settings › Sources: the same screen, with Cancel.
+    @Published var addingSource = false
+    init() { debugSamples(); rebuildSource() }
     @Published private(set) var counts: [String: Int] = [:]             // film/series category id -> titles
     /// Film/series category id -> the pictures of its first titles (the browse cards' collage), from the index.
     @Published private(set) var catArt: [String: [String]] = [:]
@@ -77,30 +83,80 @@ final class Catalog: ObservableObject {
     private var itemCache: [String: [MediaItem]] = [:]
     private var languages: [String] = Settings.defaultLanguages
 
-    var api: Xtream? { account.map(Xtream.init) }
+    /// The adapter that reads the active source (Xtream, M3U or portal); rebuilt when the active source changes.
+    private(set) var source: LibrarySource?
+    /// "Skip for now" on the first-launch screen: Home shows its empty state until a source is added.
+    @Published var onboardingSkipped = false
+    /// A big playlist asks which groups to keep; nil when nothing is asked.
+    @Published var picker: PickerState? = nil
+    /// 0...1 while the rest of a big playlist loads in the background (a thin line), nil otherwise.
+    @Published private(set) var streamProgress: Double? = nil
+    private var pickerSource: M3USource?
+    private var pickerForSettings: String?
+    private var refreshPending = false
+    private var lastLanguages: [String] = Settings.defaultLanguages
+    /// A source of the active account is always built from the stored record.
+    private var activeStored: StoredAccount? { accounts.first { $0.id == activeId } ?? accounts.first }
+    func rebuildSource() {
+        PortalSource.current = nil
+        StreamHeaderRegistry.shared.clear()
+        source = activeStored?.makeSource()
+        PortalSource.current = source as? PortalSource
+    }
+    /// Debug captures: sample sources in memory, nothing saved (-NXSampleSources YES).
+    private func debugSamples() {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "NXPretendEmpty") { AccountVault.readOnly = true; accounts = [] }
+        if UserDefaults.standard.bool(forKey: "NXSampleSources") {
+            AccountVault.readOnly = true
+            accounts = [StoredAccount(id: "s1", name: "Home", server: "http://sample.invalid", username: "u", password: "p", note: "Recognised as an Xtream link: full library"),
+                        StoredAccount(id: "s2", name: "Sports playlist", server: "https://sample.invalid/list.m3u", username: "", password: "", type: .m3u, groups: ["News", "Sport"]),
+                        StoredAccount(id: "s3", name: "Living room box", server: "http://sample.invalid/c/", username: "", password: "", type: .portal, mac: "00:1A:79:00:00:01")]
+            activeId = "s1"
+        }
+        if UserDefaults.standard.string(forKey: "NXOnboardState") != nil { AccountVault.readOnly = true; forcedOnboarding = true }
+        if UserDefaults.standard.bool(forKey: "NXOnboardSkip") { onboardingSkipped = true }
+        #endif
+    }
+    var isSample: Bool { AccountVault.readOnly }
 
     // MARK: start-up
 
     func start(languages: [String]) async {
         self.languages = languages
-        guard let api else { state = .failed("No account. Open Settings › Account."); return }
+        lastLanguages = languages
+        if isSample { state = .idle; return }
+        guard let source else { state = .failed("No source yet. Open Settings › Sources."); return }
         state = .loading
+        let m3u = source as? M3USource
+        if let m3u {
+            m3u.onChange = { [weak self] in Task { @MainActor in self?.m3uChanged() } }
+            m3u.onPicker = { [weak self] st in Task { @MainActor in if self?.pickerSource == nil { self?.picker = st } } }
+            m3u.start()
+        }
         do {
-            async let l: [XCategory] = cachedList("live_categories.json") { try await api.list(XCategory.self, "get_live_categories") }
-            async let v: [XCategory] = cachedList("vod_categories.json") { try await api.list(XCategory.self, "get_vod_categories") }
-            async let s: [XCategory] = cachedList("series_categories.json") { try await api.list(XCategory.self, "get_series_categories") }
+            // a playlist is read as it arrives: its lists are never cached
+            let cache = m3u == nil
+            async let l: [XCategory] = cachedList("live_categories.json", cache) { try await source.liveCategories() }
+            async let v: [XCategory] = cachedList("vod_categories.json", cache) { try await source.vodCategories() }
+            async let s: [XCategory] = cachedList("series_categories.json", cache) { try await source.seriesCategories() }
             (liveCats, vodCats, seriesCats) = try await (l, v, s)
-            state = liveCats.isEmpty && vodCats.isEmpty ? .failed("The server sent no categories. Check Settings › Account.") : .ready
+            state = liveCats.isEmpty && vodCats.isEmpty && seriesCats.isEmpty ? .failed("The source sent nothing to show. Check Settings › Sources.") : .ready
         } catch {
             if case Xtream.Failure.http(let code) = error {
-                state = .failed("The provider refused the request (HTTP \(code)). Check the subscription in Settings › Accounts.")
+                state = .failed("The provider refused the request (HTTP \(code)). Check the subscription in Settings › Sources.")
+            } else if let e = error as? SourceError, e == .refused {
+                state = .failed("The source refused the request. Check Settings › Sources.")
+            } else if let e = error as? SourceError, e == .notAPlaylist {
+                state = .failed("This link is not a playlist. Check Settings › Sources.")
             } else {
-                state = .failed("Could not reach the server (\(error.localizedDescription)).")
+                state = .failed("Could not reach the source (\(error.localizedDescription)).")
             }
             return
         }
         await loadHome()
         Metrics.shared.mark("catalog.home")
+        if m3u != nil { m3uChanged() }
         // the big lists come later and off the main thread: Home is on screen first
         Task { try? await Task.sleep(nanoseconds: 2_000_000_000); await ensureLiveIndex() }
         Task { try? await Task.sleep(nanoseconds: 6_000_000_000); await buildIndex(force: false) }
@@ -118,6 +174,7 @@ final class Catalog: ObservableObject {
     func use(_ id: String, languages: [String]) async {
         AccountVault.activeId = id
         activeId = id
+        rebuildSource()
         await reload(languages: languages)
     }
     func addAccount(_ a: StoredAccount) {
@@ -132,6 +189,15 @@ final class Catalog: ObservableObject {
         guard id != activeId else { return }
         accounts.removeAll { $0.id == id }; AccountVault.save(accounts)
     }
+    func renameAccount(_ id: String, to name: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, let i = accounts.firstIndex(where: { $0.id == id }) else { return }
+        accounts[i].name = n; AccountVault.save(accounts)
+    }
+    func updateGroups(_ id: String, _ groups: [String]?) {
+        guard let i = accounts.firstIndex(where: { $0.id == id }) else { return }
+        accounts[i].groups = groups; AccountVault.save(accounts)
+    }
     func reload(languages: [String]) async {
         DiskCache.clear()
         channelCache = [:]; itemCache = [:]; liveIndex = [:]; index = SearchIndex(); counts = [:]
@@ -145,10 +211,10 @@ final class Catalog: ObservableObject {
         Task { await buildIndex(force: true) }
     }
 
-    private func cachedList<T: Codable>(_ name: String, _ fetch: () async throws -> [T]) async throws -> [T] {
-        if let c: [T] = await DiskCache.loadOff(name, maxAge: Self.day), !c.isEmpty { return c }
+    private func cachedList<T: Codable>(_ name: String, _ cache: Bool = true, _ fetch: () async throws -> [T]) async throws -> [T] {
+        if cache, let c: [T] = await DiskCache.loadOff(name, maxAge: Self.day), !c.isEmpty { return c }
         let v = try await fetch()
-        if !v.isEmpty { DiskCache.saveOff(name, v) }
+        if cache, !v.isEmpty { DiskCache.saveOff(name, v) }
         return v
     }
 
@@ -179,10 +245,10 @@ final class Catalog: ObservableObject {
     func channels(_ cat: String) async -> [Channel] {
         if let c = liveIndex[cat] { return c }
         if let c = channelCache[cat] { return c }
-        guard let api else { return [] }
-        let raw = (try? await api.list(XLive.self, "get_live_streams", ["category_id": cat])) ?? []
+        guard let source else { return [] }
+        let raw = (try? await source.liveStreams(category: cat)) ?? []
         let c = Self.channels(from: raw)[cat] ?? []
-        channelCache[cat] = c
+        if !source.isStreaming { channelCache[cat] = c }
         return c
     }
 
@@ -228,18 +294,13 @@ final class Catalog: ObservableObject {
 
     /// The whole live list (≈54k channels) once a day, to fill counts and channel search.
     private func loadLiveIndex() async {
-        if let c: [String: [Channel]] = await DiskCache.loadOff("live_index.json", maxAge: Self.day), !c.isEmpty { liveIndex = c; return }
-        guard let api else { return }
-        let file = DiskCache.url("live_raw.json")
+        guard let source else { return }
+        let cache = source.type != .m3u
+        if cache, let c: [String: [Channel]] = await DiskCache.loadOff("live_index.json", maxAge: Self.day), !c.isEmpty { liveIndex = c; return }
         do {
-            try await api.download("get_live_streams", to: file)
-            let grouped = await Task.detached(priority: .utility) { () -> [String: [Channel]] in
-                defer { try? FileManager.default.removeItem(at: file) }
-                guard let d = try? Data(contentsOf: file, options: .mappedIfSafe),
-                      let raw = try? JSONDecoder().decode([XLive].self, from: d) else { return [:] }
-                return Catalog.channels(from: raw)
-            }.value
-            if !grouped.isEmpty { liveIndex = grouped; DiskCache.saveOff("live_index.json", grouped) }
+            let raw = try await source.liveStreams(category: nil)
+            let grouped = await Task.detached(priority: .utility) { Catalog.channels(from: raw) }.value
+            if !grouped.isEmpty { liveIndex = grouped; if cache { DiskCache.saveOff("live_index.json", grouped) } }
         } catch { /* the guide keeps loading one category at a time */ }
     }
 
@@ -303,23 +364,34 @@ final class Catalog: ObservableObject {
     func items(_ kind: ItemKind, _ cat: String) async -> [MediaItem] {
         let key = kind.rawValue + ":" + cat
         if let c = itemCache[key] { return c }
-        guard let api else { return [] }
+        guard let source else { return [] }
         var out: [MediaItem] = []
         // the category name rides along in `sub` (it can say "ENG SUB")
         let catName = (kind == .film ? vodCats : seriesCats).first { $0.id == cat }?.name ?? ""
         if kind == .film {
-            let raw = (try? await api.list(XVod.self, "get_vod_streams", ["category_id": cat])) ?? []
+            let raw = (try? await source.vodStreams(category: cat)) ?? []
             out = raw.filter { !$0.adult }.map { MediaItem(kind: .film, id: $0.id, name: Clean.title($0.name), img: $0.icon, ext: $0.ext, sub: catName) }
         } else {
-            let raw = (try? await api.list(XSeries.self, "get_series", ["category_id": cat])) ?? []
+            let raw = (try? await source.seriesList(category: cat)) ?? []
             out = raw.filter { !$0.adult }.map { MediaItem(kind: .series, id: $0.id, name: Clean.title($0.name), img: $0.cover, sub: catName) }
         }
-        if !out.isEmpty { itemCache[key] = out }
+        if !out.isEmpty, !source.isStreaming { itemCache[key] = out }
         return out
     }
 
     private func loadHome() async {
-        guard let api else { return }
+        guard let source else { return }
+        if source.type != .xtream {
+            // playlists and portals have no "new releases" list: the first films of the first lists, no hero banner
+            var films: [MediaItem] = []
+            for c in vodCats.prefix(3) where films.count < 30 { films += await items(.film, c.id) }
+            newFilms = films.filter { !$0.img.isEmpty }.prefix(30).map { $0 }
+            var shows: [MediaItem] = []
+            for c in seriesCats.prefix(3) where shows.count < 30 { shows += await items(.series, c.id) }
+            topSeries = shows.prefix(30).map { $0 }
+            hero = []
+            return
+        }
         let newCat = vodCats.first { $0.name.trimmingCharacters(in: .whitespaces) == "|EN| NEW RELEASED" } ?? vodCats.first { Clean.tag($0.name) == "EN" }
         let topCat = seriesCats.first { $0.name.trimmingCharacters(in: .whitespaces) == "|EN| TOP SERIES" } ?? seriesCats.first { Clean.tag($0.name) == "EN" }
         if let c: [MediaItem] = await DiskCache.loadOff("home_films.json", maxAge: Self.day / 4),
@@ -329,8 +401,8 @@ final class Catalog: ObservableObject {
             return
         }
         let newId = newCat?.id ?? "", topId = topCat?.id ?? ""
-        async let films: [XVod] = newId.isEmpty ? [] : ((try? await api.list(XVod.self, "get_vod_streams", ["category_id": newId])) ?? [])
-        async let series: [XSeries] = topId.isEmpty ? [] : ((try? await api.list(XSeries.self, "get_series", ["category_id": topId])) ?? [])
+        async let films: [XVod] = newId.isEmpty ? [] : ((try? await source.vodStreams(category: newId)) ?? [])
+        async let series: [XSeries] = topId.isEmpty ? [] : ((try? await source.seriesList(category: topId)) ?? [])
         let (f, s) = await (films, series)
         var seen = Set<String>()
         newFilms = f.filter { !$0.adult && !$0.icon.isEmpty }.compactMap { v -> MediaItem? in
@@ -357,11 +429,11 @@ final class Catalog: ObservableObject {
     func buildIndex(force: Bool) async {
         if indexState == .loading { return }
         Metrics.shared.mark("index.build force=\(force)")
-        if !force, let c: SearchIndex = await DiskCache.loadOff("search_index.json", maxAge: Self.day), c.languages == languages, !c.films.isEmpty {
+        if !force, source?.type != .m3u, let c: SearchIndex = await DiskCache.loadOff("search_index.json", maxAge: Self.day), c.languages == languages, !c.films.isEmpty {
             await setIndex(c); return
         }
         // the categories decide what is "chosen" and what is "other": never build before they are loaded
-        guard let api, !vodCats.isEmpty, !seriesCats.isEmpty else { return }
+        guard let source, !(vodCats.isEmpty && seriesCats.isEmpty) else { return }
         indexState = .loading
         indexProgress = "Preparing search · films"
         defer { indexProgress = nil }
@@ -373,27 +445,22 @@ final class Catalog: ObservableObject {
         let otherVod = Dictionary(vodCats.filter { !keepVod.contains($0.id) && !adult($0.name) }.map { ($0.id, Clean.tag($0.name) ?? Clean.country($0.name) ?? "") }, uniquingKeysWith: { a, _ in a })
         let otherSer = Dictionary(seriesCats.filter { !keepSer.contains($0.id) && !adult($0.name) }.map { ($0.id, Clean.tag($0.name) ?? Clean.country($0.name) ?? "") }, uniquingKeysWith: { a, _ in a })
         do {
-            let vf = DiskCache.url("vod_raw.json"), sf = DiskCache.url("series_raw.json")
-            try await api.download("get_vod_streams", to: vf)
+            let rawFilms = vodCats.isEmpty ? [] : try await source.vodStreams(category: nil)
             let (films, moreF) = await Task.detached(priority: .utility) { () -> ([IndexEntry], [MoreEntry]) in
-                defer { try? FileManager.default.removeItem(at: vf) }
-                guard let d = try? Data(contentsOf: vf, options: .mappedIfSafe), let raw = try? JSONDecoder().decode([XVod].self, from: d) else { return ([], []) }
-                let main = raw.filter { !$0.adult && keepVod.contains($0.categoryId) }
+                let main = rawFilms.filter { !$0.adult && keepVod.contains($0.categoryId) }
                     .map { IndexEntry(id: $0.id, name: Clean.title($0.name), img: $0.icon, cat: $0.categoryId, ext: $0.ext) }
-                let more = raw.compactMap { v -> MoreEntry? in
+                let more = rawFilms.compactMap { v -> MoreEntry? in
                     guard !v.adult, let l = otherVod[v.categoryId] else { return nil }
                     return MoreEntry(i: v.id, n: Clean.title(v.name), l: l, k: "f", x: v.ext)
                 }
                 return (main, more)
             }.value
             indexProgress = "Preparing search · series"
-            try await api.download("get_series", to: sf)
+            let rawSeries = seriesCats.isEmpty ? [] : try await source.seriesList(category: nil)
             let (series, moreS) = await Task.detached(priority: .utility) { () -> ([IndexEntry], [MoreEntry]) in
-                defer { try? FileManager.default.removeItem(at: sf) }
-                guard let d = try? Data(contentsOf: sf, options: .mappedIfSafe), let raw = try? JSONDecoder().decode([XSeries].self, from: d) else { return ([], []) }
-                let main = raw.filter { !$0.adult && keepSer.contains($0.categoryId) }
+                let main = rawSeries.filter { !$0.adult && keepSer.contains($0.categoryId) }
                     .map { IndexEntry(id: $0.id, name: Clean.title($0.name), img: $0.cover, cat: $0.categoryId, ext: "") }
-                let more = raw.compactMap { v -> MoreEntry? in
+                let more = rawSeries.compactMap { v -> MoreEntry? in
                     guard !v.adult, let l = otherSer[v.categoryId] else { return nil }
                     return MoreEntry(i: v.id, n: Clean.title(v.name), l: l, k: "s", x: "")
                 }
@@ -402,8 +469,10 @@ final class Catalog: ObservableObject {
             let ix = SearchIndex(films: films, series: series, languages: langs)
             await setIndex(ix)
             more = moreF + moreS
-            DiskCache.saveOff("search_index.json", ix)
-            DiskCache.saveOff("search_more.json", moreF + moreS)
+            if source.type != .m3u {
+                DiskCache.saveOff("search_index.json", ix)
+                DiskCache.saveOff("search_more.json", moreF + moreS)
+            }
         } catch {
             indexState = .failed(error.localizedDescription)
         }
@@ -438,9 +507,9 @@ final class Catalog: ObservableObject {
     // MARK: details
 
     func details(_ it: MediaItem) async -> Details? {
-        guard let api else { return nil }
+        guard let source else { return nil }
         let isFilm = it.kind == .film
-        guard let d = try? await api.json(isFilm ? "get_vod_info" : "get_series_info", isFilm ? ["vod_id": it.id] : ["series_id": it.id]) else { return nil }
+        guard let d = try? await source.info(film: isFilm, id: it.id) else { return nil }
         let info = d["info"] as? [String: Any] ?? [:]
         func s(_ o: [String: Any], _ k: String) -> String {
             if let v = o[k] as? String { return v }
@@ -488,17 +557,71 @@ final class Catalog: ObservableObject {
 
     // MARK: stream URLs
 
-    func url(_ it: MediaItem) -> URL? {
-        guard var api else { return nil }
-        // test hook: -NXStreamBase http://127.0.0.1:18888 sends the stream (only the stream) through a local stand-in
-        if let b = UserDefaults.standard.string(forKey: "NXStreamBase") { api = Xtream(account: Account(server: b, username: api.account.username, password: api.account.password)) }
-        switch it.kind {
-        case .live: return api.liveURL(it.id)
-        case .film: return api.filmURL(it.id, it.ext)
-        case .episode: return api.episodeURL(it.id, it.ext)
-        case .series: return nil
+    func url(_ it: MediaItem) -> URL? { source?.streamURL(kind: it.kind, id: it.id, ext: it.ext) }
+
+    // MARK: a playlist that arrives while the owner browses
+
+    /// New entries came in (or the download ended): the categories, the live list and the films are rebuilt, at most about once a second.
+    private func m3uChanged() {
+        guard source is M3USource, !refreshPending else { return }
+        refreshPending = true
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            await self?.refreshFromPlaylist()
         }
     }
+    private func refreshFromPlaylist() async {
+        refreshPending = false
+        guard let m = source as? M3USource else { return }
+        let live = try? await m.liveStreams(category: nil)
+        let cats = (try? await m.liveCategories()) ?? [], vods = (try? await m.vodCategories()) ?? [], sers = (try? await m.seriesCategories()) ?? []
+        let grouped = await Task.detached(priority: .utility) { Catalog.channels(from: live ?? []) }.value
+        guard m === source else { return }
+        if cats != liveCats { liveCats = cats }
+        if vods != vodCats { vodCats = vods }
+        if sers != seriesCats { seriesCats = sers }
+        liveIndex = grouped
+        itemCache = [:]; channelCache = [:]
+        let st = m.pickerState()
+        streamProgress = m.isStreaming && st.total > 0 ? min(1, Double(st.read) / Double(st.total)) : nil
+        if m.isStreaming { m3uChanged() }
+        else {
+            streamProgress = nil
+            if newFilms.isEmpty { await loadHome() }
+            await buildIndex(force: true)
+        }
+    }
+
+    /// The owner chose which groups of a big playlist to keep.
+    func keepGroups(_ set: Set<String>) {
+        guard let m = pickerSource ?? (source as? M3USource) else { return }
+        let list = set.sorted()
+        if let id = pickerForSettings {
+            // Settings › Sources › Choose groups: the counting read ends here, the playlist loads again with the choice
+            m.cancel(); pickerSource = nil; pickerForSettings = nil; picker = nil
+            updateGroups(id, list)
+            if id == activeId { rebuildSource(); Task { await reload(languages: lastLanguages) } }
+            return
+        }
+        m.keepGroups(set)
+        updateGroups(activeId, list)
+        picker = nil
+        m3uChanged()
+    }
+    func cancelPicker() {
+        if pickerForSettings != nil { pickerSource?.cancel(); pickerSource = nil; pickerForSettings = nil }
+        picker = nil
+    }
+    /// Settings › Sources › Choose groups: read the playlist again, count its groups, ask.
+    func chooseGroups(for id: String) {
+        guard let a = accounts.first(where: { $0.id == id }), a.type == .m3u, let u = URL(string: Account(server: a.server, username: "x", password: "x").base) else { return }
+        let m = M3USource(url: u, epg: a.epg, forcePicker: true)
+        pickerSource = m; pickerForSettings = id
+        m.onPicker = { [weak self] st in Task { @MainActor in if self?.pickerSource === m { self?.picker = st } } }
+        picker = PickerState()
+        m.start()
+    }
+    var pickerIsFromSettings: Bool { pickerForSettings != nil }
 }
 
 /// HeroItem is not Codable on purpose (it is a view model); this wraps it for the disk cache.

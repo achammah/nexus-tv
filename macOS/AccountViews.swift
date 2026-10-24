@@ -1,84 +1,44 @@
 import SwiftUI
 
-/// IPTV account form: name, server, username, password, checked with the provider before it is saved to the
-/// Keychain. On first launch it is a sheet over the empty window that cannot be dismissed.
-struct AccountSheet: View {
-    var firstLaunch = false
-    let done: () -> Void
-    @EnvironmentObject var catalog: Catalog
-    @EnvironmentObject var settings: Settings
-    @State private var name = ""
-    @State private var server = ""
-    @State private var username = ""
-    @State private var password = ""
-    @State private var status = "The login is checked with your provider before it is saved."
-    @State private var busy = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if firstLaunch { Wordmark(size: 17).padding(.bottom, 6) }
-            Text(firstLaunch ? "Add your IPTV account" : "Add an account").font(.system(size: 22, weight: .bold))
-            if firstLaunch {
-                Text("Nexus TV plays your own provider’s live channels, films and series (Xtream Codes). Enter the details your provider gave you. They stay in this Mac’s Keychain.")
-                    .font(.system(size: 13)).foregroundStyle(MacTheme.soft).fixedSize(horizontal: false, vertical: true)
-            }
-            Form {
-                TextField("Name", text: $name, prompt: Text("For you, e.g. Home IPTV")).accessibilityIdentifier("acc-name")
-                TextField("Server", text: $server, prompt: Text("http://server:port")).accessibilityIdentifier("acc-server")
-                TextField("Username", text: $username).accessibilityIdentifier("acc-user")
-                SecureField("Password", text: $password).accessibilityIdentifier("acc-pass")
-            }
-            .formStyle(.grouped).frame(height: 210)
-            Text(status).font(.system(size: 12)).foregroundStyle(MacTheme.soft).accessibilityIdentifier("acc-status")
-            HStack {
-                Spacer()
-                if !firstLaunch { Button("Cancel", action: done).keyboardShortcut(.cancelAction) }
-                Button(firstLaunch ? "Check and sign in" : "Check and save") { Task { await save() } }
-                    .keyboardShortcut(.defaultAction).disabled(busy).accessibilityIdentifier("acc-save")
-            }
-        }
-        .padding(24).frame(width: 520)
-        .interactiveDismissDisabled(firstLaunch)
-    }
-
-    private func save() async {
-        let a = Account(server: server, username: username, password: password)
-        guard a.isComplete else { status = "Server, username and password are all needed."; return }
-        busy = true; status = "Checking the login…"
-        if let err = await AccountVault.check(a) { status = err; busy = false; return }
-        let s = StoredAccount(id: "a\(Int(Date().timeIntervalSince1970))", name: name.isEmpty ? username : name, server: a.base, username: username, password: password)
-        if firstLaunch { await catalog.onboard(s, languages: settings.languages) } else { catalog.addAccount(s) }
-        busy = false
-        done()
-    }
-}
-
-/// IPTV account page (sidebar): the accounts, which one is active, add, switch, remove.
+/// Sources page (sidebar): the sources, which one is active, add, rename, switch, remove, choose groups.
 struct AccountPage: View {
     @EnvironmentObject var catalog: Catalog
     @EnvironmentObject var settings: Settings
-    @State private var adding = false
+    @State private var renaming: StoredAccount?
+    @State private var newName = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Your IPTV logins, kept in this Mac’s Keychain and never shown.").foregroundStyle(MacTheme.soft)
+            Text("Your sources, kept in this Mac\u{2019}s Keychain and never shown.").foregroundStyle(MacTheme.soft)
             ForEach(catalog.accounts) { a in
                 let active = a.id == catalog.activeId
                 HStack(spacing: 12) {
-                    Image(systemName: active ? "checkmark.circle.fill" : "person.crop.circle").foregroundStyle(active ? Color.green : MacTheme.soft)
-                    Text(a.name).font(.system(size: 14, weight: .semibold))
+                    Image(systemName: a.type.icon).font(.system(size: 15)).frame(width: 26, height: 26)
+                        .foregroundStyle(active ? Color.green : MacTheme.soft)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(a.name).font(.system(size: 14, weight: .semibold))
+                        Text(a.note.isEmpty ? a.type.title : a.note).font(.system(size: 12)).foregroundStyle(MacTheme.dim)
+                    }
                     Spacer()
+                    if a.type == .m3u { Button("Choose groups") { catalog.chooseGroups(for: a.id) }.accessibilityIdentifier("src-groups-" + a.id) }
+                    Button("Rename") { newName = a.name; renaming = a }.accessibilityIdentifier("src-rename-" + a.id)
                     if active { Text("Active").foregroundStyle(Color.green) } else {
                         Button("Switch") { Task { await catalog.use(a.id, languages: settings.languages) } }
                         Button("Remove", role: .destructive) { catalog.removeAccount(a.id) }
                     }
                 }
-                .padding(12).frame(maxWidth: 640).background(RoundedRectangle(cornerRadius: 8).fill(MacTheme.tile))
+                .padding(12).frame(maxWidth: 720).background(RoundedRectangle(cornerRadius: 8).fill(MacTheme.tile))
+                .accessibilityElement(children: .contain).accessibilityIdentifier("source-" + a.id)
             }
-            Button { adding = true } label: { Label("Add an account", systemImage: "plus") }.buttonStyle(MacPill()).padding(.top, 6)
+            Button { catalog.addingSource = true } label: { Label("Add a source", systemImage: "plus") }.buttonStyle(MacPill()).padding(.top, 6)
+                .accessibilityIdentifier("src-add")
             Spacer()
         }
         .padding(24)
-        .sheet(isPresented: $adding) { AccountSheet { adding = false } }
+        .alert("Rename source", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save") { if let r = renaming { catalog.renameAccount(r.id, to: newName) }; renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        }
     }
 }
 
@@ -93,7 +53,7 @@ struct MacSettingsPane: View {
     @State private var osStatus = ""
     var body: some View {
         Form {
-            Section("Live TV countries") {
+            Section("Live countries") {
                 let all = catalog.liveCountries.isEmpty ? Settings.defaultCountries.map { ($0, 0) } : catalog.liveCountries
                 ScrollView(.horizontal) {
                     HStack { ForEach(all, id: \.0) { c in

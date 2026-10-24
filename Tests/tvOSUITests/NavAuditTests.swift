@@ -24,7 +24,7 @@ final class NavAuditTests: XCTestCase {
     }
     /// Focus is on the search keyboard (the element itself reports focus; its keys do not).
     var onKeyboard: Bool { focused.elementType == .keyboard || app.keys.matching(NSPredicate(format: "hasFocus == true")).count > 0 || app.searchFields.matching(NSPredicate(format: "hasFocus == true")).count > 0 }
-    var onMenu: Bool { app.buttons.matching(NSPredicate(format: "hasFocus == true AND (label IN {'Home','Live TV','Films','Series','My List','Search','Settings','gearshape.fill'})")).count > 0 }
+    var onMenu: Bool { app.buttons.matching(NSPredicate(format: "hasFocus == true AND (label IN {'Home','Live','Films','Series','My List','Search','Settings','gearshape.fill'})")).count > 0 }
     func save(_ name: String) { try? trace.joined(separator: "\n").write(toFile: dir + "/nav-" + name + ".txt", atomically: true, encoding: .utf8) }
     func launch(_ args: [String]) { app = XCUIApplication(); app.launchArguments = args; app.launch(); idle(12) }
 

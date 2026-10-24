@@ -54,6 +54,10 @@ final class BrowseTVTests: XCTestCase {
 
     func testLiveShelvesOpenTheGuideOnAList() {
         launch("live")
+        // Live (design A): pinned countries first; a pinned country opens its shelves by family
+        for _ in 0..<6 { if focused.identifier.hasPrefix("live:pinned:") { break }; press(.down, wait: 1) }
+        XCTAssertTrue(focused.identifier.hasPrefix("live:pinned:"), "a pinned country; focused: \(focused.identifier)")
+        press(.select, wait: 6)
         XCTAssertTrue(shelf("Main channels").waitForExistence(timeout: 30), "Main channels shelf")
         let names = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'shelf:'")).allElementsBoundByIndex.map(\.identifier)
         if names.contains("shelf:Events & pay-per-view") { XCTAssertEqual(names.last, "shelf:Events & pay-per-view", "events last") }

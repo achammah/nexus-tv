@@ -3,13 +3,13 @@ import SwiftUI
 /// Settings: menu tabs, Home rows, Live TV countries, film/series languages, Lists, Accounts, clearing lists.
 struct SettingsView: View {
     enum Section: String, CaseIterable, Identifiable {
-        case menu = "Menu tabs", rows = "Home rows", countries = "Live TV countries", languages = "Film & series languages",
-             lists = "Lists", channels = "Channels", subtitles = "Subtitles", accounts = "Accounts", clear = "Clear lists"
+        case menu = "Menu tabs", rows = "Home rows", countries = "Live countries", languages = "Film & series languages",
+             lists = "Lists", channels = "Channels", subtitles = "Subtitles", accounts = "Sources", clear = "Clear lists"
         var id: String { rawValue }
         var icon: String {
             switch self {
             case .menu: "menubar.rectangle"; case .rows: "rectangle.stack"; case .countries: "globe.europe.africa"
-            case .languages: "character.bubble"; case .lists: "list.bullet.rectangle"; case .channels: "star.circle"; case .subtitles: "captions.bubble"; case .accounts: "person.2.circle"
+            case .languages: "character.bubble"; case .lists: "list.bullet.rectangle"; case .channels: "star.circle"; case .subtitles: "captions.bubble"; case .accounts: "link.circle"
             case .clear: "clock.arrow.circlepath"
             }
         }
@@ -19,7 +19,7 @@ struct SettingsView: View {
     @State private var overlay: Overlay? = nil
     @FocusState private var side: Section?
     @State private var returnTo: Section = .menu
-    enum Overlay { case addList, addAccount, channels, osub }
+    enum Overlay { case addList, channels, osub }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -52,7 +52,7 @@ struct SettingsView: View {
                         case .lists: ListsPane(add: { overlay = .addList })
                         case .channels: ChannelsPane(browse: { overlay = .channels })
                         case .subtitles: SubtitlesPane(edit: { overlay = .osub })
-                        case .accounts: AccountsPane(add: { overlay = .addAccount })
+                        case .accounts: AccountsPane(add: { catalog.addingSource = true })
                         case .clear: ClearPane()
                         }
                     }
@@ -70,7 +70,6 @@ struct SettingsView: View {
                 Group {
                     switch o {
                     case .addList: ListPicker(close: { overlay = nil })
-                    case .addAccount: AccountForm(close: { overlay = nil }) { catalog.addAccount($0) }
                     case .channels: ChannelPicker(close: { overlay = nil })
                     case .osub: OSubForm(close: { overlay = nil })
                     }
@@ -202,7 +201,7 @@ private struct CountriesPane: View {
     @EnvironmentObject var catalog: Catalog
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PaneTitle(title: "Live TV countries", note: "Countries shown in Live TV, Home and search, in the order you pick them. Default: Belgium, France, UK, US.")
+            PaneTitle(title: "Live countries", note: "Countries shown in Live, Home and search, in the order you pick them. Default: Belgium, France, UK, US.")
             Text("Chosen: " + settings.countries.map(Countries.name).joined(separator: ", ")).font(.ui(22)).foregroundStyle(.white.opacity(0.8)).padding(.bottom, 16)
             let all = catalog.liveCountries.isEmpty ? Settings.defaultCountries.map { ($0, 0) } : catalog.liveCountries
             ChipGrid(items: all.map { (id: $0.0, label: Countries.name($0.0), sub: $0.1 > 0 ? "\($0.1)" : "") },
@@ -468,98 +467,50 @@ private struct ChannelPicker: View {
     }
 }
 
-// MARK: - Accounts: add (login checked first), switch, remove
+// MARK: - Sources: add (the same three-way form), rename, switch, remove, choose groups
 
 private struct AccountsPane: View {
     let add: () -> Void
     @EnvironmentObject var catalog: Catalog
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var user: UserStore
+    @State private var renaming: StoredAccount?
+    @State private var newName = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PaneTitle(title: "Accounts", note: "Your IPTV logins, kept in this Apple TV's Keychain and never shown. Click switches; long press removes.")
-            Button(action: add) { Label("Add an account", systemImage: "plus") }.buttonStyle(PillButtonStyle()).padding(.bottom, 12)
+            PaneTitle(title: "Sources", note: "Your sources, kept in this Apple TV's Keychain and never shown. Click switches; long press renames, removes or chooses groups.")
+            Button(action: add) { Label("Add a source", systemImage: "plus") }.buttonStyle(PillButtonStyle()).padding(.bottom, 12)
             ForEach(catalog.accounts) { a in
                 let active = a.id == catalog.activeId
                 Button {
                     if !active { user.show("Switching to \(a.name)…"); Task { await catalog.use(a.id, languages: settings.languages) } }
                 } label: {
                     HStack(spacing: 16) {
-                        Image(systemName: active ? "checkmark.circle.fill" : "person.crop.circle").frame(width: 34)
-                        Text(a.name)
+                        Image(systemName: a.type.icon).frame(width: 34).foregroundStyle(active ? Color.green : Color.primary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(a.name)
+                            Text(a.note.isEmpty ? a.type.title : a.note).font(.ui(18)).foregroundStyle(.secondary)
+                        }
                         Spacer()
                         Text(active ? "Active" : "Switch").font(.ui(20)).foregroundStyle(active ? Color.green : Color.primary.opacity(0.55))
                     }
                     .frame(width: 900)
                 }
-                .buttonStyle(ChipButtonStyle(selected: active, height: 64, idle: Color.white.opacity(0.05)))
+                .buttonStyle(ChipButtonStyle(selected: active, height: 78, idle: Color.white.opacity(0.05)))
                 .contextMenu {
+                    Button { newName = a.name; renaming = a } label: { Label("Rename", systemImage: "pencil") }
+                    if a.type == .m3u { Button { catalog.chooseGroups(for: a.id) } label: { Label("Choose groups", systemImage: "checklist") } }
                     Button(role: .destructive) {
-                        if active { user.show("Switch to another account first") } else { catalog.removeAccount(a.id); user.show("Account removed") }
-                    } label: { Label("Remove account", systemImage: "trash") }
+                        if active { user.show("Switch to another source first") } else { catalog.removeAccount(a.id); user.show("Source removed") }
+                    } label: { Label("Remove source", systemImage: "trash") }
                 }
             }
         }
-    }
-}
-
-/// Name, server, username, password with the system text fields (the Apple TV keyboard, dictation and the
-/// iPhone typing prompt). The login is checked with the provider before it is saved to the Keychain.
-/// Used by Settings › Accounts and by the first-launch screen.
-struct AccountForm: View {
-    var title = "Add an account"
-    var intro: String? = nil
-    var saveLabel = "Check and save"
-    /// nil: no Cancel button (first launch).
-    let close: (() -> Void)?
-    /// Called with the checked login; the caller stores it.
-    let saved: (StoredAccount) async -> Void
-    @State private var name = ""
-    @State private var server = ""
-    @State private var username = ""
-    @State private var password = ""
-    @State private var status = "The login is checked with your provider before it is saved."
-    @State private var busy = false
-    @FocusState private var nameFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(title).font(.ui(40, .bold)).padding(.bottom, intro == nil ? 10 : 0)
-            if let intro { Text(intro).font(.ui(24)).foregroundStyle(.white.opacity(0.6)).frame(width: 1124, alignment: .leading).padding(.bottom, 14) }
-            field("Name") { TextField("For you, e.g. Home IPTV", text: $name).focused($nameFocused) }
-            field("Server") { TextField("http://server:port", text: $server).textContentType(.URL) }
-            field("Username") { TextField("Username", text: $username).textContentType(.username) }
-            field("Password") { SecureField("Password", text: $password).textContentType(.password) }
-            HStack(spacing: 18) {
-                Button(saveLabel) { Task { await save() } }.buttonStyle(PillButtonStyle()).disabled(busy)
-                if let close { Button("Cancel", action: close).buttonStyle(PillButtonStyle()) }
-            }
-            .padding(.top, 10)
-            Text(status).font(.ui(22)).foregroundStyle(.white.opacity(0.7))
+        .alert("Rename source", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save") { if let r = renaming { catalog.renameAccount(r.id, to: newName) }; renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
         }
-        .padding(.leading, 160).padding(.top, 150)
-        .frame(width: 1920, height: 1080, alignment: .topLeading)
-        .focusSection()
-        .onAppear { nameFocused = true }
-    }
-
-    private func field<F: View>(_ label: String, @ViewBuilder _ f: () -> F) -> some View {
-        HStack(spacing: 24) {
-            Text(label).font(.ui(24, .semibold)).frame(width: 200, alignment: .leading)
-            f().font(.ui(24)).frame(width: 900)
-        }
-    }
-
-    private func save() async {
-        let a = Account(server: server, username: username, password: password)
-        guard a.isComplete else { status = "Server, username and password are all needed."; return }
-        busy = true; status = "Checking the login…"
-        if let err = await AccountVault.check(a) { status = err; busy = false; return }
-        status = "Signed in. Loading your catalogue…"
-        await saved(StoredAccount(id: "a\(Int(Date().timeIntervalSince1970))", name: name.isEmpty ? username : name,
-                                  server: a.base, username: username, password: password))
-        busy = false
-        close?()
     }
 }
 

@@ -64,7 +64,12 @@ final class UserStore: ObservableObject {
     /// is finished (last 60 s of a known duration). Position is saved every 15 s and on exit.
     func setResume(_ it: MediaItem, posMs: Int, durMs: Int) {
         if durMs > 0 && posMs > durMs - 60_000 { resume[it.key] = nil }
-        else { resume[it.key] = ResumePoint(item: it, posMs: max(0, posMs), durMs: max(0, durMs), at: Date()) }
+        else {
+            // keep a picture we already had: a play started from a page without art must not blank the tile
+            var item = it
+            if item.img.isEmpty, let old = resume[it.key]?.item.img, !old.isEmpty { item.img = old }
+            resume[it.key] = ResumePoint(item: item, posMs: max(0, posMs), durMs: max(0, durMs), at: Date())
+        }
         save()
     }
     func finished(_ it: MediaItem) { resume[it.key] = nil; save() }
@@ -161,7 +166,7 @@ enum TabID: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .home: "Home"; case .live: "Live TV"; case .films: "Films"; case .series: "Series"
+        case .home: "Home"; case .live: "Live"; case .films: "Films"; case .series: "Series"
         case .mylist: "My List"; case .search: "Search"; case .settings: "Settings"
         }
     }
@@ -173,6 +178,8 @@ struct Toggled<ID: Codable & Hashable>: Codable, Hashable { var id: ID; var visi
 /// Home rows: fixed rows plus one live row per chosen country ("live:BE").
 enum HomeRow {
     static let fixed = ["continue", "mylist", "favMore", "newFilms", "topSeries"]
+    /// The rows the Mac Home draws (plus one "live:CC" row per pinned country).
+    static let mac: Set<String> = ["continue", "mylist", "newFilms", "topSeries"]
     static func label(_ id: String) -> String {
         switch id {
         case "continue": return "Continue watching"
@@ -287,6 +294,7 @@ final class Settings: ObservableObject {
         homeRows = rows
     }
     func removeList(_ key: String) { lists.removeAll { $0.key == key } }
+    func showAllRows() { for i in homeRows.indices { homeRows[i].visible = true } }
     func hideRow(_ id: String) { if let i = homeRows.firstIndex(where: { $0.id == id }) { homeRows[i].visible = false } }
     /// Moves a Home row past its visible neighbour (d = -1 up, +1 down).
     func moveRow(_ id: String, by d: Int) {

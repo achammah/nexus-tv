@@ -14,39 +14,42 @@ enum MacTheme {
     static let gold = Color(red: 1, green: 0.79, blue: 0.3)
 }
 
-/// Pictures load off the main thread and are kept in memory for the session.
+/// Mac wrapper over the shared loader (Shared/Core/ImageLoader.swift); kept for BannerCard.
 @MainActor
 final class MacImages {
     static let shared = MacImages()
-    private let cache = NSCache<NSURL, NSImage>()
-    private var running: [URL: Task<NSImage?, Never>] = [:]
-    func image(_ url: URL) async -> NSImage? {
-        if let i = cache.object(forKey: url as NSURL) { return i }
-        if let t = running[url] { return await t.value }
-        let t = Task.detached(priority: .utility) { () -> NSImage? in
-            guard let (d, r) = try? await URLSession.shared.data(from: url), (r as? HTTPURLResponse)?.statusCode ?? 200 < 400 else { return nil }
-            return NSImage(data: d)
-        }
-        running[url] = t
-        let i = await t.value
-        running[url] = nil
-        if let i { cache.setObject(i, forKey: url as NSURL) }
-        return i
+    func image(_ url: URL, maxPixel: CGFloat = 700) async -> NSImage? {
+        guard let cg = await ImageLoader.shared.image(url, maxPixel: maxPixel) else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
     }
 }
 
 struct MacImage<Placeholder: View>: View {
     let url: URL?
     var fill = true
+    var maxPixel: CGFloat? = nil
     @ViewBuilder var placeholder: () -> Placeholder
-    @State private var image: NSImage?
+    @State private var image: CGImage?
+    /// The picture size follows the TMDB size in the address; other pictures are tile sized.
+    private var px: CGFloat {
+        if let maxPixel { return maxPixel }
+        let u = url?.absoluteString ?? ""
+        return u.contains("/w1280/") ? 1600 : u.contains("/w780/") ? 900 : 700
+    }
     var body: some View {
         ZStack {
             if let image {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: fill ? .fill : .fit)
+                Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: fill ? .fill : .fit)
             } else { placeholder() }
         }
-        .task(id: url) { image = nil; if let url { image = await MacImages.shared.image(url) } }
+        .task(id: url) {
+            guard let url else { image = nil; return }
+            if let c = ImageLoader.shared.cached(url, maxPixel: px) { image = c; return }
+            image = nil
+            image = await ImageLoader.shared.image(url, maxPixel: px)
+            // a failed picture is tried again once the loader has forgotten the failure
+            if image == nil, (try? await Task.sleep(for: .seconds(62))) != nil { image = await ImageLoader.shared.image(url, maxPixel: px) }
+        }
     }
 }
 
@@ -54,7 +57,10 @@ struct MacImage<Placeholder: View>: View {
 struct PosterTile: View {
     let item: MediaItem
     var w: CGFloat = 124, h: CGFloat = 186
+    /// The Home row it sits in, when it can be moved there.
+    var row: TileRowRef? = nil
     @EnvironmentObject var user: UserStore
+    @EnvironmentObject var settings: Settings
     @EnvironmentObject var nav: MacNav
     @State private var hover = false
     var body: some View {
@@ -78,6 +84,7 @@ struct PosterTile: View {
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .contextMenu { TileMenu.poster(item, row: row, user: user, settings: settings, nav: nav) }
         .accessibilityIdentifier("tile:" + item.key)
         .accessibilityLabel(item.name)
     }
@@ -112,10 +119,18 @@ struct ChannelTile: View {
     @State private var hover = false
     var body: some View {
         Button(action: play) {
-            VStack(spacing: 6) {
-                MacImage(url: Img.url(item.img), fill: false) { EmptyView() }
-                    .frame(width: w * 0.6, height: h * 0.46)
-                Text(item.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).padding(.horizontal, 6)
+            ChannelLogoResolver(name: item.name, icon: item.img, sub: item.sub, maxPixel: 300) { logo in
+                switch logo {
+                case .none: WordmarkTile(name: item.name, w: w, h: h, radius: 8)
+                case .loading, .image:
+                    VStack(spacing: 6) {
+                        ZStack {
+                            if case .image(let cg) = logo { Image(decorative: cg, scale: 1).resizable().aspectRatio(contentMode: .fit) }
+                        }
+                        .frame(width: w * 0.6, height: h * 0.46)
+                        Text(item.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).padding(.horizontal, 6)
+                    }
+                }
             }
             .frame(width: w, height: h)
             .background(RoundedRectangle(cornerRadius: 8).fill(MacTheme.channel))
@@ -177,4 +192,55 @@ struct Wordmark: View {
 /// Loading placeholder.
 struct Shimmer: View {
     var body: some View { RoundedRectangle(cornerRadius: 8).fill(MacTheme.tile) }
+}
+
+/// A Home row a tile can move in: its id and the keys in the order shown.
+struct TileRowRef { let id: String; let keys: [String] }
+
+/// Right-click menus on tiles: open or play, save or remove, move left or right, hide the row.
+@MainActor
+enum TileMenu {
+    @ViewBuilder static func poster(_ it: MediaItem, row: TileRowRef?, user: UserStore, settings: Settings, nav: MacNav) -> some View {
+        Button { nav.open(it) } label: { Label("Open", systemImage: "info.circle") }
+        listButton(it, user: user)
+        if let row { Divider(); moves(row.id, it.key, keys: row.keys, settings: settings) }
+    }
+
+    @ViewBuilder static func resume(_ r: ResumePoint, row: String, keys: [String], user: UserStore, settings: Settings, nav: MacNav) -> some View {
+        Button { Player(nav: nav).play(r.item, startMs: r.posMs) } label: { Label("Resume", systemImage: "play.fill") }
+        Button { Player(nav: nav).play(r.item) } label: { Label("Play from the start", systemImage: "backward.end.fill") }
+        if r.item.kind != .live { listButton(r.item, user: user) }
+        Divider()
+        Button(role: .destructive) { user.removeResume(r) } label: { Label("Remove from Continue watching", systemImage: "xmark.circle") }
+        moves(row, r.item.key, keys: keys, settings: settings)
+    }
+
+    @ViewBuilder static func channel(_ it: MediaItem, cc: String, row: String, keys: [String], user: UserStore, settings: Settings, nav: MacNav, play: @escaping () -> Void) -> some View {
+        Button(action: play) { Label("Watch", systemImage: "play.fill") }
+        if user.isFav(it.id) {
+            Button { user.toggleFav(it, cc: cc) } label: { Label("Remove from favourites", systemImage: "star.slash") }
+        } else {
+            Button { user.toggleFav(it, cc: cc) } label: { Label("Add to favourites", systemImage: "star") }
+        }
+        Divider()
+        moves(row, it.key, keys: keys, settings: settings)
+    }
+
+    @ViewBuilder private static func listButton(_ it: MediaItem, user: UserStore) -> some View {
+        if user.inList(it) {
+            Button { user.toggle(it) } label: { Label("Remove from My List", systemImage: "minus.circle") }
+        } else {
+            Button { user.toggle(it) } label: { Label("Add to My List", systemImage: "plus") }
+        }
+    }
+
+    @ViewBuilder private static func moves(_ row: String, _ key: String, keys: [String], settings: Settings) -> some View {
+        let i = keys.firstIndex(of: key) ?? 0
+        Button { withAnimation { settings.moveTile(row, key, by: -1, keys: keys) } } label: { Label("Move left", systemImage: "arrow.left") }.disabled(i == 0)
+        Button { withAnimation { settings.moveTile(row, key, by: 1, keys: keys) } } label: { Label("Move right", systemImage: "arrow.right") }.disabled(i >= keys.count - 1)
+        Divider()
+        Button { withAnimation { settings.moveRow(row, by: -1) } } label: { Label("Move row up", systemImage: "arrow.up") }
+        Button { withAnimation { settings.moveRow(row, by: 1) } } label: { Label("Move row down", systemImage: "arrow.down") }
+        Button(role: .destructive) { withAnimation { settings.hideRow(row) } } label: { Label("Hide this row", systemImage: "eye.slash") }
+    }
 }

@@ -12,7 +12,7 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "11"
+    CURRENT_PROJECT_VERSION: "12"
 targets:
   NexusTV:
     type: application
@@ -80,6 +80,11 @@ targets:
     sources:
       - path: Shared
       - path: macOS
+        excludes: ["AppIcon.icon/**"]
+      # Icon Composer bundle (macOS 26 draws it as a native icon, no frame); the AppIcon set in Assets is the fallback
+      - path: macOS/AppIcon.icon
+        type: file
+        buildPhase: resources
     dependencies:
       - framework: Vendor/VLCKit.xcframework
         embed: true
