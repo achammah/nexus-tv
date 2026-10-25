@@ -36,7 +36,7 @@ var Home = (function () {
         if (!hero.length) return;
         heroIdx = (i + hero.length) % hero.length;
         var h = hero[heroIdx], next = heroFront ? heroA : heroB, prev = heroFront ? heroB : heroA;
-        var url = U.img(h.back, 'w1280');
+        var url = U.img(h.back, 'w780');
         var im = new Image();
         im.onload = function () {
             next.style.backgroundImage = 'url("' + url + '")';

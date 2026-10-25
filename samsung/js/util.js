@@ -99,13 +99,70 @@ var U = (function () {
     function filmUrl(id, ext) { if (IP.type === 'm') return id; if (IP.type === 'p') return 'stalker:vod:' + id; return IP.base + '/movie/' + IP.user + '/' + IP.pass + '/' + id + '.' + (ext || 'mp4'); }
     function epUrl(id, ext) { if (IP.type === 'm') return id; if (IP.type === 'p') return 'stalker:vod:' + id; return IP.base + '/series/' + IP.user + '/' + IP.pass + '/' + id + '.' + (ext || 'mkv'); }
 
-    // 'T:<file>' = a TMDB picture; size picks the width ('w342' posters, 'w780' stills, 'w1280' backdrops).
+    // 'T:<file>' = a TMDB picture; size picks the width ('w185' stills, 'w342' posters, 'w780' hero, 'w1280' detail backdrop).
+    // Any TMDB URL the provider gives (often "original", 1 to 3 MB) is rewritten to the wanted size: "original" never reaches the TV.
+    var TMDB_RE = /^https?:\/\/(?:image\.tmdb\.org|www\.themoviedb\.org)\/t\/p\/[^\/]+\/(.+)$/;
     function img(src, size) {
         if (!src) return '';
         if (src.indexOf('T:') === 0) return 'https://image.tmdb.org/t/p/' + (size || 'w342') + '/' + src.slice(2);
+        var m = TMDB_RE.exec(src);
+        if (m) return 'https://image.tmdb.org/t/p/' + (size || 'w342') + '/' + m[1];
         // a saved remote logo (favourites, Continue watching) uses the copy bundled in the app when there is one
         if (window.LOGOS_LOCAL && /^https?:/.test(src)) { var f = src.split('/').pop().replace(/[^A-Za-z0-9._-]/g, '_'); if (window.LOGOS_LOCAL[f]) return window.LOGOS_LOCAL[f]; }
         return src;
+    }
+    // ---- lazy picture loader: at most 4 downloads at a time, only for tiles on screen, nearest to the focus first ----
+    var LZ = { max: 4, busy: [], timer: null, logged: 0, idle: 0 };
+    function lzVisible(im) {
+        if (!im.parentNode || !document.body.contains(im)) return null;
+        if (document.documentElement.className.indexOf('playing') >= 0 && !U_inPlayer(im)) return null;
+        var r = im.getBoundingClientRect();
+        if (!r.width || !r.height || r.right <= 0 || r.left >= 1920 || r.bottom <= 0 || r.top >= 1080) return null;
+        return r;
+    }
+    function U_inPlayer(im) { for (var n = im; n; n = n.parentNode) if (n.id === 'player') return true; return false; }
+    function lzHost(u) { var m = /^https?:\/\/([^\/]+)/.exec(u); return m ? m[1] : 'local'; }
+    function lzLog(ok, im, t0) {
+        if (LZ.logged >= 20) return; LZ.logged++;
+        diagLog({ ev: ok ? 'img.ok' : 'img.err', ms: Date.now() - t0, host: lzHost(im.getAttribute('data-src') || '') });
+    }
+    function lzDone(im) { var i = LZ.busy.indexOf(im); if (i >= 0) LZ.busy.splice(i, 1); lzKick(); }
+    function lzScan() {
+        LZ.timer = null;
+        // loads that scrolled away or left the page are cancelled
+        for (var k = LZ.busy.length - 1; k >= 0; k--) {
+            var b = LZ.busy[k];
+            if (!lzVisible(b)) { b.onload = b.onerror = null; b.removeAttribute('src'); b.setAttribute('data-lz', ''); LZ.busy.splice(k, 1); }
+        }
+        var all = document.querySelectorAll('img[data-src]'), cand = [], fe = document.querySelector('.tile.focus, .ch.focus, .card.focus, .ep.focus, .ec.ring, .big, .focus');
+        var fr = fe ? fe.getBoundingClientRect() : null, fx = fr ? fr.left + fr.width / 2 : 960, fy = fr ? fr.top + fr.height / 2 : 540;
+        for (var i = 0; i < all.length; i++) {
+            var im = all[i]; if (im.getAttribute('data-lz') === 'run') continue;
+            var r = lzVisible(im); if (!r) continue;
+            // the focused row first, then the rows above and below: vertical distance counts more than horizontal
+            cand.push({ im: im, d: Math.abs(r.top + r.height / 2 - fy) * 3 + Math.abs(r.left + r.width / 2 - fx) });
+        }
+        cand.sort(function (x, y) { return x.d - y.d; });
+        for (var j = 0; j < cand.length && LZ.busy.length < LZ.max; j++) lzStart(cand[j].im);
+        // keep watching while pictures wait: the focus moves without any redraw, and new tiles scroll into view
+        if (cand.length || LZ.busy.length) { LZ.idle = 0; LZ.timer = setTimeout(lzScan, 250); }
+        else if (all.length) LZ.timer = setTimeout(lzScan, 500);
+        else LZ.logged = 0;
+    }
+    function lzStart(im) {
+        var t0 = Date.now(), p = im.parentNode;
+        im.setAttribute('data-lz', 'run'); LZ.busy.push(im);
+        im.onload = function () { im.removeAttribute('data-src'); im.removeAttribute('data-lz'); im.onload = im.onerror = null; if (im.parentNode) im.parentNode.className += ' hasimg'; lzLog(true, im, t0); lzDone(im); };
+        im.onerror = function () { var par = im.parentNode; lzLog(false, im, t0); im.onload = im.onerror = null; if (par) par.removeChild(im); lzDone(im); };
+        im.src = im.getAttribute('data-src');
+    }
+    function lzKick() { if (!LZ.timer) LZ.timer = setTimeout(lzScan, 30); }
+    // A tile picture: a placeholder now, filled by the queue when it is on screen; the name stays when it fails.
+    function imgTag(src, size) {
+        var u = img(src, size);
+        if (!u) return '';
+        lzKick();
+        return '<img data-src="' + esc(u) + '" alt="">';
     }
     // A channel logo by its name: the copy bundled in the app first (saved favourites can carry a dead provider link)
     function logoFor(name, src) {
@@ -115,12 +172,6 @@ var U = (function () {
             if (window.LOGOS_NAME[k]) return window.LOGOS_NAME[k];
         }
         return src;
-    }
-    // A tile picture: shown when it loads, the name stays when it fails.
-    function imgTag(src, size) {
-        var u = img(src, size);
-        if (!u) return '';
-        return '<img src="' + esc(u) + '" onload="if(this.parentNode)this.parentNode.className+=\' hasimg\'" onerror="if(this.parentNode)this.parentNode.removeChild(this)">';
     }
     // A channel with no logo: its cleaned name set as a wordmark on a tile tinted from the name (same name, same tint).
     function cleanName(n) {

@@ -272,7 +272,7 @@ var Detail = (function () {
             h += '<div class="abs t" id="dEps" style="left:0;top:' + (sy + 76) + 'px;width:1920px;height:260px">';
             for (var e = 0; e < list.length && e < 60; e++) {
                 var E = list[e], still = E.info && E.info.movie_image ? E.info.movie_image : it.img;
-                h += '<div class="ep' + (row === 2 && e === ep ? ' focus' : '') + '" style="left:' + (ex + e * 406 - off) + 'px;top:0"><div class="nm"></div>' + U.imgTag(still, 'w780') +
+                h += '<div class="ep' + (row === 2 && e === ep ? ' focus' : '') + '" style="left:' + (ex + e * 406 - off) + 'px;top:0"><div class="nm"></div>' + U.imgTag(still, 'w185') +
                     '<div class="fade"></div><div class="num">' + (E.episode_num || e + 1) + '. ' + U.esc(E.title ? String(E.title).replace(/^.*?-\s*S\d+E\d+\s*-?\s*/i, '') : '') + '</div></div>';
             }
             h += '</div>';

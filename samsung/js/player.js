@@ -750,7 +750,7 @@ var Player = (function () {
             var E = list[i], playing_ = i === c.e, rs = U.getResume({ k: 'ep', id: E.id }), pos = playing_ ? (cur.pos || 0) : (rs ? rs.pos : 0), dur = playing_ ? (cur.dur || 0) : (rs ? rs.dur : 0);
             var watched = !playing_ && U.isWatched({ k: 'ep', id: E.id }), mins = runtimeMin(E), still = E.info && E.info.movie_image ? E.info.movie_image : c.ser.img;
             var l2 = playing_ ? (dur ? U.fmtTime(pos) + ' of ' + U.fmtTime(dur) : (mins ? mins + ' min' : '')) : (mins ? mins + ' min' : '') + (i === c.e - 1 ? ' · Previous' : i === c.e + 1 ? ' · Next' : '');
-            h += '<div class="ec' + (sel === i ? ' ring' : '') + '" style="left:' + x + 'px"><div class="eth">' + U.imgTag(still, 'w780') +
+            h += '<div class="ec' + (sel === i ? ' ring' : '') + '" style="left:' + x + 'px"><div class="eth">' + U.imgTag(still, 'w185') +
                 (playing_ ? '<i class="eb">PLAYING</i>' : watched ? '<i class="eb">WATCHED</i>' : '') + (dur && pos > 0 ? '<s style="width:' + Math.min(100, Math.round(100 * pos / dur)) + '%"></s>' : '') + '</div>' +
                 '<div class="ecap"><b>E' + (E.episode_num || i + 1) + ' · ' + U.esc(cleanEpTitle(E.title)) + '</b><span>' + U.esc(l2) + '</span></div></div>';
         }
@@ -910,7 +910,7 @@ var Player = (function () {
         if (last) { kick = 'LAST EPISODE'; title = 'Back to Home'; sub = 'OK goes Home · Back keeps the credits'; }
         else if (newSeason) { kick = 'NEXT SEASON · ' + ni.tag + (ni.mins ? ' · ' + ni.mins + ' MIN' : ''); title = ni.title || cur.nextName || ''; }
         else { kick = 'NEXT · ' + (ni ? ni.tag : '') + (ni && ni.mins ? ' · ' + ni.mins + ' MIN' : ''); title = ni && ni.title ? ni.title : (cur.nextName || ''); }
-        var thumb = ni && ni.img ? U.imgTag(ni.img, 'w300') : '';
+        var thumb = ni && ni.img ? U.imgTag(ni.img, 'w185') : '';
         upOn = true; upRing = ring; upLeft = ring ? CARD_SEC : 0;
         upEl.innerHTML = '<div class="ut">' + thumb + '</div><div class="ux"><div class="uh">' + U.esc(kick) + '</div><div class="un">' + U.esc(title) + '</div><div class="uk">' + sub + '</div></div>' +
             '<div class="ur' + (ring ? ' run' : '') + '"><svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="22" class="rb"/><circle cx="26" cy="26" r="22" class="rf" id="rf"/></svg><b id="rn">' + (ring ? CARD_SEC : '&#9654;') + '</b></div>';

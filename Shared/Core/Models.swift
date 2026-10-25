@@ -236,7 +236,7 @@ enum Img {
     static func url(_ s: String, _ size: ImageSize = .poster) -> URL? {
         let t = s.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return nil }
-        if let r = t.range(of: "image.tmdb.org/t/p/") {
+        if let r = t.range(of: "image.tmdb.org/t/p/") ?? t.range(of: "www.themoviedb.org/t/p/") {
             let rest = t[r.upperBound...]
             guard let slash = rest.firstIndex(of: "/") else { return nil }
             let file = rest[rest.index(after: slash)...]
