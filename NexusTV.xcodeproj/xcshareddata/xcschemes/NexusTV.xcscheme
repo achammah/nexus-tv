@@ -44,6 +44,17 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B3FF86F3B96D61FB6E383FF0"
+               BuildableName = "NexusTVTests.xctest"
+               BlueprintName = "NexusTVTests"
+               ReferencedContainer = "container:NexusTV.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "0B60958774261D6FF6482D15"
                BuildableName = "NexusTVUITests.xctest"
                BlueprintName = "NexusTVUITests"

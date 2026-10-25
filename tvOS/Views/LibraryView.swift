@@ -120,6 +120,7 @@ struct GridTile: View {
     var focusTick = 0
     let action: () -> Void
     @EnvironmentObject var user: UserStore
+    @EnvironmentObject var nav: Nav
     @FocusState private var focused: Bool
     var body: some View {
         let _ = Metrics.shared.count("GridTile")
@@ -128,7 +129,7 @@ struct GridTile: View {
                 .buttonStyle(TileButtonStyle())
                 .focused($focused)
                 .onChange(of: focusTick) { _, _ in if focusMe { focused = true } }
-                .contextMenu {
+                .tileMenu(for: item, nav: nav) {
                     Button(action: action) { Label(item.kind == .live ? "Watch" : "Open", systemImage: "play.fill") }
                     Button { user.toggle(item) } label: {
                         user.inList(item) ? Label("Remove from My List", systemImage: "minus.circle") : Label("Add to My List", systemImage: "plus")

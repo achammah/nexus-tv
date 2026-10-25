@@ -308,3 +308,119 @@ extension VLCController {
         return "\(n) \(i + 1)"
     }
 }
+
+// MARK: - Track labels (player redesign 2026-10-25; both apps use them)
+
+/// What the player knows about one audio or subtitle track.
+struct TrackFacts: Equatable {
+    var index: Int
+    /// VLC's own name, e.g. "Commentary - [English]"; the title keywords are read from it.
+    var raw: String
+    /// Language as an English name ("English", "German"); nil when the file carries no tag and detection found none.
+    var language: String?
+    /// "5.1", "stereo" ... (audio only) and the codec ("AC3").
+    var channels: String? = nil
+    var codec: String? = nil
+}
+
+/// How a track reads in the popup: `name` on the left, `detail` in grey on the right, a round flag before the name.
+struct TrackLabel: Equatable {
+    var name: String            // "English", "English · Descriptive", "Track 6"
+    var detail: String          // "5.1 · AC3", "hearing impaired", "unknown language · stereo"
+    var flag: String?           // asset name in Shared/Brand.xcassets ("flag-gb"); nil = a grey circle
+    var short: String           // the second word of the bar button: "English", "Track 6"
+}
+
+enum TrackLabels {
+    /// Title keywords that tell two tracks of one language apart, in the order they are tried.
+    static let keywords: [(label: String, pattern: String)] = [
+        ("Descriptive", "descriptive|audio[ -]?description|\\bAD\\b|visually impaired"),
+        ("Commentary", "commentary"),
+        ("SDH", "\\bSDH\\b|hearing[ -]impaired|closed[ -]caption|\\bCC\\b"),
+        ("Forced", "forced|\\bsigns?\\b"),
+        ("Original", "original|\\bVO\\b|\\bOV\\b"),
+    ]
+
+    static func keyword(in raw: String) -> String? {
+        for k in keywords where raw.range(of: k.pattern, options: [.regularExpression, .caseInsensitive]) != nil { return k.label }
+        return nil
+    }
+
+    /// "5.1" for 6 channels, "stereo" for 2 ... ; nil for 0.
+    static func channelName(_ n: Int) -> String? {
+        switch n {
+        case 0: return nil
+        case 1: return "mono"
+        case 2: return "stereo"
+        case 6: return "5.1"
+        case 8: return "7.1"
+        default: return "\(n) ch"
+        }
+    }
+
+    /// Round flag for a language (the language's main country); nil when unsure: the popup then draws a grey circle.
+    static func flag(forLanguage name: String?) -> String? {
+        guard let name, let code = VLCController.languageCode(name)?.lowercased() else { return nil }
+        let country = ["en": "gb", "fr": "fr", "de": "de", "nl": "nl", "es": "es", "it": "it", "pt": "pt", "ja": "jp", "ko": "kr",
+                       "zh": "cn", "ru": "ru", "ar": "sa", "tr": "tr", "pl": "pl", "sv": "se", "da": "dk", "no": "no", "nb": "no",
+                       "fi": "fi", "el": "gr", "he": "il", "hi": "in", "cs": "cz", "hu": "hu", "ro": "ro", "uk": "ua", "th": "th",
+                       "vi": "vn", "id": "id", "ms": "my", "fa": "ir", "bg": "bg", "hr": "hr", "sr": "rs", "sk": "sk", "sl": "si",
+                       "ca": "es", "et": "ee", "lv": "lv", "lt": "lt", "is": "is", "ga": "ie", "sq": "al", "mk": "mk", "bn": "bd",
+                       "ur": "pk", "ta": "in", "te": "in"][code]
+        return country.map { "flag-" + $0 }
+    }
+
+    /// The labels of one list (audio or subtitles). The rule:
+    /// 1. the language from the tag; no tag: "Track N" (N = its place in the list) with detail "unknown language";
+    /// 2. a title keyword (Descriptive, Commentary, SDH, Forced, Original) joins the name, as on the approved boards
+    ///    ("Japanese · Original"); it is what tells two tracks of one language apart;
+    /// 3. channels and codec ride in the detail (audio), so two tracks that still read alike differ there;
+    /// 4. only a pair identical on every point gets "Track N" last. Never "English 1 / English 2".
+    static func labels(_ tracks: [TrackFacts], audio: Bool) -> [Int: TrackLabel] {
+        let real = tracks.filter { $0.index >= 0 }
+        var out: [Int: TrackLabel] = [:]
+        var pending: [(TrackFacts, Int, String, String)] = []     // track, position, name, detail
+        for (i, t) in real.enumerated() {
+            let kw = keyword(in: t.raw)
+            let tech = audio ? [t.channels, t.codec].compactMap { $0 }.joined(separator: " · ")
+                             : (kw == "SDH" ? "hearing impaired" : (kw == "Forced" ? "signs only" : ""))
+            if let lang = t.language {
+                let name = kw.map { lang + " · " + $0 } ?? lang
+                pending.append((t, i + 1, name, tech))
+            } else {
+                let detail = (["unknown language"] + (tech.isEmpty ? [] : [tech])).joined(separator: " · ")
+                out[t.index] = TrackLabel(name: "Track \(i + 1)", detail: detail, flag: nil, short: "Track \(i + 1)")
+            }
+        }
+        for (t, pos, name, detail) in pending {
+            let twins = pending.filter { $0.2.lowercased() == name.lowercased() && $0.3 == detail }.count
+            let final = twins > 1 ? name + " · Track \(pos)" : name
+            out[t.index] = TrackLabel(name: final, detail: detail, flag: flag(forLanguage: t.language), short: t.language ?? final)
+        }
+        return out
+    }
+}
+
+extension VLCController {
+    /// Channels ("5.1") of an audio track, from the file's track list; nil when VLC does not say.
+    func audioChannels(_ id: Int) -> String? {
+        for t in player.media?.tracksInformation as? [[String: Any]] ?? [] where (t[VLCMediaTracksInformationType] as? String) == VLCMediaTracksInformationTypeAudio {
+            guard (t[VLCMediaTracksInformationId] as? NSNumber)?.intValue == id else { continue }
+            return TrackLabels.channelName((t[VLCMediaTracksInformationAudioChannelsNumber] as? NSNumber)?.intValue ?? 0)
+        }
+        return nil
+    }
+    /// The audio tracks as the label rule needs them.
+    var audioFacts: [TrackFacts] {
+        audioTracks.map { TrackFacts(index: $0.0, raw: $0.1, language: Self.languageName(Self.trackName($0.1).trimmingCharacters(in: .whitespaces)),
+                                     channels: audioChannels($0.0), codec: audioFormat($0.0)) }
+    }
+    /// The subtitle tracks as the label rule needs them (the language already read from the tag or from the text).
+    var subtitleFacts: [TrackFacts] {
+        let raws = zip(player.videoSubTitlesIndexes as? [NSNumber] ?? [], player.videoSubTitlesNames as? [String] ?? []).map { ($0.intValue, $1) }
+        return subtitleTracks.map { t in
+            let raw = raws.first { $0.0 == t.0 }?.1 ?? t.1
+            return TrackFacts(index: t.0, raw: raw, language: Self.languageName(Self.trackName(t.1).trimmingCharacters(in: .whitespaces)))
+        }
+    }
+}

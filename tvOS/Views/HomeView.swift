@@ -318,7 +318,7 @@ struct ShelfTile: View {
             .modifier(Jiggle(on: moving, seed: index))
             .focused($focused)
             .onChange(of: focused) { _, f in if f, nav.tab == .home, Chrome.shared.headerHidden == isFirstRow { Chrome.shared.headerHidden = !isFirstRow; if isFirstRow { Chrome.shared.scrolled = false } } }
-            .contextMenu { if tile.allChannels == nil { menu } }
+            .tileMenu(for: item, nav: nav, row: rowId, tile: tile.id) { if tile.allChannels == nil { menu } }
             if shape == .logo {
                 HStack(spacing: 10) {
                     Text(item.name).font(.ui(22, .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)

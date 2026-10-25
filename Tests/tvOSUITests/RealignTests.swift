@@ -15,7 +15,7 @@ final class RealignTests: XCTestCase {
         return focused.label.contains(label)
     }
     func openSubtitles() {
-        let bar: Set<String> = ["Back 10 seconds", "Pause", "Play", "Forward 10 seconds", "Audio", "Subtitles", "Next episode"]
+        let bar: Set<String> = ["Back 10 seconds", "Pause", "Play", "Forward 10 seconds", "Audio", "Subtitles", "Next episode", "Episodes"]
         if !bar.contains(focused.label) { press(.select, wait: 2) }
         XCTAssertTrue(focusTo("Subtitles", .right), "Subtitles button")
         press(.select, wait: 2)

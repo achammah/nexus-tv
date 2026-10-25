@@ -15,7 +15,7 @@ struct RootView: View {
     @State private var opening = OpeningGate.enabled
     @StateObject private var onboard = OnboardingModel.fromLaunch()
     /// The first-launch screen, "Add a source", a check in progress, or a debug capture.
-    private var showsOnboarding: Bool { catalog.showsOnboarding || catalog.addingSource || onboard.isActive }
+    private var showsOnboarding: Bool { !PlayerDemo.on && (catalog.showsOnboarding || catalog.addingSource || onboard.isActive) }
 
     var body: some View {
         let _ = Metrics.shared.count("RootView")
@@ -66,12 +66,14 @@ struct RootView: View {
             .blur(radius: onboard.ending || !showsOnboarding ? 0 : 14)
             .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 1.2).delay(0.2), value: onboard.ending)
             .animation(.easeOut(duration: 0.9).delay(0.25), value: showsOnboarding && !onboard.ending)
-            if catalog.needsAccount && catalog.onboardingSkipped && !catalog.addingSource && !onboard.isActive && nav.tab != .settings {
+            .disabled(nav.seriesMenu != nil)
+            if !PlayerDemo.on && catalog.needsAccount && catalog.onboardingSkipped && !catalog.addingSource && !onboard.isActive && nav.tab != .settings {
                 // after "Skip for now": Home and the other screens say the library is empty
                 ZStack { Color.black; LibraryEmptyState { catalog.onboardingSkipped = false } }.padding(.top, 128)
             }
             if showsOnboarding { OnboardingView(model: onboard).transition(.opacity) }
             if let st = catalog.picker { GroupPickerView(state: st).frame(width: 1920, height: 1080) }
+            if let m = nav.seriesMenu { SeriesMenuView(req: m).id(m.id).transition(.opacity) }
             if let f = catalog.streamProgress {
                 GeometryReader { g in Rectangle().fill(LinearGradient(colors: [Color(red: 211 / 255, green: 148 / 255, blue: 230 / 255), Color(red: 174 / 255, green: 219 / 255, blue: 142 / 255)], startPoint: .leading, endPoint: .trailing)).frame(width: g.size.width * f, height: 3) }
                     .frame(height: 3).frame(maxHeight: .infinity, alignment: .top).allowsHitTesting(false)
@@ -115,6 +117,7 @@ struct RootView: View {
 
     /// Menu/Back: close the detail page, else go up to the menu bar, else back to Home, else leave the app (system default).
     private var exitAction: (() -> Void)? {
+        if nav.seriesMenu != nil { return { nav.seriesMenu = nil } }
         if nav.movingRow != nil { return { nav.stopMoving() } }
         if !nav.detail.isEmpty { return { nav.detail.removeLast() } }
         if !nav.browse.isEmpty { return { nav.browse.removeLast() } }

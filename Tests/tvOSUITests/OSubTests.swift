@@ -19,7 +19,7 @@ final class OSubTests: XCTestCase {
     func launch(_ args: [String], wait: Double = 12) { app = XCUIApplication(); app.launchArguments = ["-NXMetrics", "YES"] + args; app.launch(); idle(wait) }
 
     func openSubtitles() {
-        let bar: Set<String> = ["Back 10 seconds", "Pause", "Play", "Forward 10 seconds", "Audio", "Subtitles", "Next episode"]
+        let bar: Set<String> = ["Back 10 seconds", "Pause", "Play", "Forward 10 seconds", "Audio", "Subtitles", "Next episode", "Episodes"]
         if !bar.contains(focused.label) { press(.select, wait: 2) }       // the control bar is hidden: show it
         XCTAssertTrue(focusTo("Subtitles", .right), "Subtitles button")
         press(.select, wait: 2)
@@ -73,8 +73,9 @@ final class OSubTests: XCTestCase {
                 "-NXStart", "600000"], wait: 24)
         // the choice made in test 2 is remembered for the series: episode 1 shows it again
         press(.select, wait: 2)
-        press(.up, wait: 1)
-        XCTAssertEqual(focused.label, "Next episode", "Next episode")
+        press(.right, 5, wait: 2)
+        XCTAssertEqual(focused.label, "Episodes", "Episodes")
+        press(.down, wait: 1); press(.right, wait: 1)
         press(.select, wait: 30)
         openSubtitles()
         shot("o-3-next-episode")

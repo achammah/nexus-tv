@@ -2,7 +2,7 @@ import Foundation
 
 // The player rules that need no screen: track labels, the credits cue, the "still watching?" counters.
 // Private copies for the Mac lane.
-// TODO(merge): use Shared.creditsCue / Shared.TrackLabel / Shared.AutoplayState once the tvOS lane has added them to Shared.
+// TODO(merge): use Shared.creditsCue / Shared.MacTrackLabel / Shared.AutoplayState once the tvOS lane has added them to Shared.
 
 // MARK: - Track labels (rule 2)
 
@@ -21,7 +21,7 @@ struct TrackInput: Equatable {
 
 /// What the audio and subtitle popups show for one track: a language name, then what tells two tracks of the
 /// same language apart, and never "English 1 / English 2".
-struct TrackLabel: Equatable, Identifiable {
+struct MacTrackLabel: Equatable, Identifiable {
     var id: Int
     /// "English", "English · Descriptive", "Track 6".
     var text: String
@@ -36,7 +36,7 @@ struct TrackLabel: Equatable, Identifiable {
     /// Language from the track's tag (or the detected one), then a discriminator only when two tracks share a language:
     /// Descriptive, Commentary, Original, SDH or Forced from the track title, else the channels and the codec.
     /// No language at all: "Track N" with "unknown language" at the right (N counts from 1 in this list).
-    static func make(tracks: [TrackInput]) -> [TrackLabel] {
+    static func make(tracks: [TrackInput]) -> [MacTrackLabel] {
         struct Row { var t: TrackInput; var lang: String?; var key: String?; var detail: String }
         var rows: [Row] = tracks.map { t in
             var lang = t.language
@@ -54,16 +54,16 @@ struct TrackLabel: Equatable, Identifiable {
         for i in rows.indices where rows[i].detail.isEmpty && rows[i].t.channels == nil && rows[i].t.codec == nil {
             if rows[i].key == "SDH" { rows[i].detail = "hearing impaired" } else if rows[i].key == "Forced" { rows[i].detail = "signs only" }
         }
-        var out: [TrackLabel] = []
+        var out: [MacTrackLabel] = []
         for (n, r) in rows.enumerated() {
             guard let lang = r.lang else {
-                out.append(TrackLabel(id: r.t.id, text: "Track \(n + 1)", detail: (["unknown language"] + (r.detail.isEmpty ? [] : [r.detail])).joined(separator: " · "),
+                out.append(MacTrackLabel(id: r.t.id, text: "Track \(n + 1)", detail: (["unknown language"] + (r.detail.isEmpty ? [] : [r.detail])).joined(separator: " · "),
                                       language: nil, flag: nil))
                 continue
             }
             let shared = rows.filter { $0.lang?.lowercased() == lang.lowercased() }.count > 1
             let text = shared && r.key != nil ? lang + " · " + r.key! : lang
-            out.append(TrackLabel(id: r.t.id, text: text, detail: r.detail, language: lang, flag: LanguageFlag.asset(lang)))
+            out.append(MacTrackLabel(id: r.t.id, text: text, detail: r.detail, language: lang, flag: LanguageFlag.asset(lang)))
         }
         // two rows still reading the same (same language, no keyword, same channels and codec): the position tells them apart
         let before = out

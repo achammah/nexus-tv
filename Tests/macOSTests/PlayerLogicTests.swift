@@ -7,7 +7,7 @@ final class PlayerLogicTests: XCTestCase {
     // MARK: track labels
 
     func testTwoEnglishAudioTracksAreToldApartByTheirTitleNotByANumber() {
-        let l = TrackLabel.make(tracks: [
+        let l = MacTrackLabel.make(tracks: [
             TrackInput(id: 1, raw: "Track 1 - [English]", channels: 6, codec: "AC3"),
             TrackInput(id: 2, raw: "Track 2 - [English]", title: "Audio Description", channels: 2, codec: "AAC"),
             TrackInput(id: 3, raw: "Track 3 - [German]", channels: 6, codec: "AC3"),
@@ -19,7 +19,7 @@ final class PlayerLogicTests: XCTestCase {
     }
 
     func testTwoGermanTracksWithNoKeywordShowChannelsAndCodecAtTheRight() {
-        let l = TrackLabel.make(tracks: [
+        let l = MacTrackLabel.make(tracks: [
             TrackInput(id: 1, raw: "Track 1 - [German]", channels: 6, codec: "AC3"),
             TrackInput(id: 2, raw: "Track 2 - [German]", channels: 2, codec: "AAC"),
         ])
@@ -29,7 +29,7 @@ final class PlayerLogicTests: XCTestCase {
     }
 
     func testTwoTracksThatReadTheSameGetTheirPositionNeverEnglish1() {
-        let l = TrackLabel.make(tracks: [
+        let l = MacTrackLabel.make(tracks: [
             TrackInput(id: 4, raw: "Track 1 - [English]", channels: 2, codec: "AAC"),
             TrackInput(id: 5, raw: "Track 2 - [English]", channels: 2, codec: "AAC"),
         ])
@@ -38,7 +38,7 @@ final class PlayerLogicTests: XCTestCase {
     }
 
     func testNoLanguageAtAllIsTrackNUnknownLanguageWithAGreyCircle() {
-        let l = TrackLabel.make(tracks: [
+        let l = MacTrackLabel.make(tracks: [
             TrackInput(id: 1, raw: "Track 1 - [English]", channels: 2),
             TrackInput(id: 6, raw: "Track 2", channels: 2, codec: nil),
         ])
@@ -49,7 +49,7 @@ final class PlayerLogicTests: XCTestCase {
     }
 
     func testSubtitleKeywordsOnlyWhenTwoShareALanguage() {
-        let l = TrackLabel.make(tracks: [
+        let l = MacTrackLabel.make(tracks: [
             TrackInput(id: 1, raw: "English"),
             TrackInput(id: 2, raw: "English", title: "English SDH"),
             TrackInput(id: 3, raw: "English", title: "Forced"),
@@ -62,7 +62,7 @@ final class PlayerLogicTests: XCTestCase {
     }
 
     func testDetectedLanguageWinsWhenTheFileHasNoTag() {
-        let l = TrackLabel.make(tracks: [TrackInput(id: 9, raw: "Track 3", language: "Dutch")])
+        let l = MacTrackLabel.make(tracks: [TrackInput(id: 9, raw: "Track 3", language: "Dutch")])
         XCTAssertEqual(l[0].text, "Dutch")
         XCTAssertEqual(l[0].flag, "flag-nl")
     }

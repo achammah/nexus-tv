@@ -71,6 +71,8 @@ final class Nav: ObservableObject {
     /// Live TV: open the guide on this country (set by a Home "All channels" tile).
     @Published var guideCountry: String? = nil
     @Published var playing: PlayRequest? = nil
+    /// The long-press menu of a series tile (tvOS/Views/SeriesMenu.swift).
+    @Published var seriesMenu: SeriesMenuRequest? = nil
     @Published var searchSeed: String = ""
     /// Bumped to ask the menu bar to take focus.
     @Published var focusMenuTick = 0

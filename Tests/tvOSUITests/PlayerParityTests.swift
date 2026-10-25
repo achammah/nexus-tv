@@ -1,7 +1,6 @@
 import XCTest
 
-/// Player parity with the Frame (build 9): icon-only controls, Next episode above the timeline, the
-/// next-episode card near the end, the chained next episode from Continue watching, audio formats, remembered audio.
+/// Player on the real provider (one stream): the labelled bar, the episode strip, the compact card at the credits cue, the chained next episode from Continue watching, audio formats, remembered audio.
 final class PlayerParityTests: XCTestCase {
     let r = XCUIRemote.shared
     var app: XCUIApplication!
@@ -15,71 +14,58 @@ final class PlayerParityTests: XCTestCase {
         ["-NXPlay", "episode:1928870:mkv", "-NXName", "House Of Guinness · S1 E1", "-NXSeries", "45370:House Of Guinness", "-NXStart", "\(ms)", "-NXResetUser", "YES"]
     }
 
-    // (1) icons only: no text on the control bar, every button still has a name
-    func testControlsAreIcons() {
+    // (1) the bar: round buttons, then Audio <language>, Subtitles <language>, and on the right Episodes n of m
+    func testBarIsLabelled() {
         launch(["-NXPlay", "film:1773307:mkv", "-NXName", "The Sand Castle", "-NXStart", "600000"])
         press(.select, wait: 2)
-        shot("p-1-icons")
+        shot("p-1-bar")
         for name in ["Back 10 seconds", "Pause", "Forward 10 seconds", "Audio", "Subtitles"] {
             XCTAssertTrue(app.buttons[name].exists, "\(name) button")
         }
-        let texts = app.staticTexts.matching(NSPredicate(format: "label IN {'10 s', 'Audio', 'Subtitles', 'Next episode'}")).count
-        XCTAssertEqual(texts, 0, "no text labels on the control bar")
+        XCTAssertFalse(app.buttons["Episodes"].exists, "a film has no Episodes button")
     }
 
-    // (2) Next episode sits above the timeline on the right: Up from the bar reaches it
-    func testNextEpisodeAboveTimeline() {
-        launch(episode(at: 600_000))
-        press(.select, wait: 2)                                // control bar, focus on play/pause
-        press(.up, wait: 1)
-        shot("p-2-next-button")
-        XCTAssertEqual(focused.label, "Next episode", "Up from the bar reaches Next episode")
-        let next = app.buttons["Next episode"].frame, pause = app.buttons["Pause"].frame
-        XCTAssertGreaterThan(next.minX, 1400, "on the right")
-        XCTAssertLessThan(next.maxY, pause.minY, "above the bar (and the timeline)")
-    }
-
-    // (3a) the card shows 40 s before the end, counts down and plays the next episode
-    func testCountdownPlaysNextEpisode() {
-        launch(episode(at: 3_105_000), wait: 14)
-        let card = app.staticTexts["NEXT EPISODE"]
-        XCTAssertTrue(card.waitForExistence(timeout: 30), "the next-episode card shows near the end")
-        shot("p-3-card")
-        XCTAssertTrue(focused.label.hasPrefix("Play now"), "Play now has focus; at \(focused.label)")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'S1 E2'")).count > 0, "next episode label S1 E2 · title")
-        idle(16)                                               // the 10 s countdown runs out
-        press(.up, wait: 1)
-        shot("p-3-next-playing")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'S1 E2'")).count > 0, "episode 2 plays after the countdown")
-    }
-
-    // (3b) Select plays now
-    func testCountdownSelectPlaysNow() {
-        launch(episode(at: 3_105_000), wait: 14)
-        XCTAssertTrue(app.staticTexts["NEXT EPISODE"].waitForExistence(timeout: 30), "card")
-        press(.select, wait: 12)
-        press(.up, wait: 1)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'S1 E2'")).count > 0, "Select plays the next episode now")
-    }
-
-    // (3c) Menu hides the card, keeps watching, and the card does not come back in this playback
-    func testCountdownMenuKeepsWatching() {
-        launch(episode(at: 3_105_000), wait: 14)
-        XCTAssertTrue(app.staticTexts["NEXT EPISODE"].waitForExistence(timeout: 30), "card")
-        press(.menu, wait: 1)
-        XCTAssertFalse(app.staticTexts["NEXT EPISODE"].exists, "Menu hides the card")
-        idle(14)
-        press(.up, wait: 1)
-        shot("p-3-kept-watching")
-        XCTAssertFalse(app.staticTexts["NEXT EPISODE"].exists, "shown once per playback")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'S1 E1'")).count > 0, "still episode 1")
-    }
-
-    // (4) started without its episode list (as from Continue watching): the next one is found
-    func testResumedEpisodeHasNext() {
+    // (2) Episodes n of m opens the strip by focus; Down, Right, OK plays the next episode
+    func testEpisodesStripPlaysNext() {
         launch(episode(at: 600_000))
         press(.select, wait: 2)
-        XCTAssertTrue(app.buttons["Next episode"].waitForExistence(timeout: 10), "Next episode found from the series")
+        press(.right, 5, wait: 2)
+        shot("p-2-strip")
+        XCTAssertEqual(focused.label, "Episodes", "Episodes has focus and its strip is up")
+        press(.down, wait: 1); press(.right, wait: 1)
+        press(.select, wait: 25)
+        press(.up, wait: 1)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'E2'")).count > 0, "episode 2 plays")
+    }
+
+    // (3a) the compact card shows at the credits cue (no memory, no subtitles read: the last 2 %), waits without a ring on a first episode
+    func testEndCardAtTheCue() {
+        launch(episode(at: 3_105_000), wait: 14)
+        let card = app.buttons["Next episode card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 40), "the end card shows near the end")
+        shot("p-3-card")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'NEXT'")).count > 0, "NEXT · E2")
+        idle(14)
+        XCTAssertTrue(card.exists, "the first episode of a session has no ring: the card waits")
+    }
+
+    // (3b) OK plays the next episode now
+    func testEndCardSelectPlaysNow() {
+        launch(episode(at: 3_105_000), wait: 14)
+        XCTAssertTrue(app.buttons["Next episode card"].waitForExistence(timeout: 40), "card")
+        press(.select, wait: 14)
+        press(.up, wait: 1)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'E2'")).count > 0, "OK plays the next episode now")
+    }
+
+    // (3c) Back keeps the credits; the card comes back when the file ends
+    func testEndCardBackKeepsCredits() {
+        launch(episode(at: 3_105_000), wait: 14)
+        XCTAssertTrue(app.buttons["Next episode card"].waitForExistence(timeout: 40), "card")
+        press(.menu, wait: 1)
+        XCTAssertFalse(app.buttons["Next episode card"].exists, "Back hides the card")
+        shot("p-3-kept-watching")
+        XCTAssertTrue(app.buttons["Next episode card"].waitForExistence(timeout: 90), "the card returns at the end of the file")
     }
 
     // (6) the audio menu shows language and format, with a check on the active track

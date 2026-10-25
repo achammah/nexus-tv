@@ -32,10 +32,20 @@ final class UserStore: ObservableObject {
         if UserDefaults.standard.bool(forKey: "NXResetUser") {
             for k in ["nx.mylist", "nx.resume", "nx.favs"] { UserDefaults.standard.removeObject(forKey: k + suffix) }
             UserDefaults.standard.removeObject(forKey: "nx.tracks"); trackPrefs = [:]   // remembered audio and subtitle choices
+            for k in ["nx.credits", "nx.watched", "nx.lastKey"] { UserDefaults.standard.removeObject(forKey: k) }
+            creditsSamples = [:]; watchedKeys = []; watching = StillWatching()
         }
         myList = loadJSON("nx.mylist" + suffix, [])
         resume = loadJSON("nx.resume" + suffix, [:])
         favs = loadJSON("nx.favs" + suffix, [])
+        // test hook (Apple TV, simulator): -NXDemoSeries YES shows a made-up series in My List and Continue watching
+        if UserDefaults.standard.bool(forKey: "NXDemoSeries") {
+            let s = MediaItem(kind: .series, id: "demo", name: "House Of Guinness")
+            let e = MediaItem(kind: .episode, id: "demo3", name: "House Of Guinness · S1 E3", ext: "mkv", sub: "Black Velvet", seriesId: "demo", seriesName: "House Of Guinness")
+            myList = [s]
+            resume = [e.key: ResumePoint(item: e, posMs: 634_000, durMs: 3_171_000, at: Date())]
+            watchedKeys.formUnion(["episode:demo1", "episode:demo2"])
+        }
     }
     private func save() {
         saveJSON("nx.mylist" + suffix, myList); saveJSON("nx.resume" + suffix, resume); saveJSON("nx.favs" + suffix, favs)
@@ -63,7 +73,7 @@ final class UserStore: ObservableObject {
     /// Continue watching: an entry exists from the moment playback starts; it goes only when the title
     /// is finished (last 60 s of a known duration). Position is saved every 15 s and on exit.
     func setResume(_ it: MediaItem, posMs: Int, durMs: Int) {
-        if durMs > 0 && posMs > durMs - 60_000 { resume[it.key] = nil }
+        if durMs > 0 && posMs > durMs - 60_000 { resume[it.key] = nil; markWatched(it) }
         else {
             // keep a picture we already had: a play started from a page without art must not blank the tile
             var item = it
@@ -72,7 +82,7 @@ final class UserStore: ObservableObject {
         }
         save()
     }
-    func finished(_ it: MediaItem) { resume[it.key] = nil; save() }
+    func finished(_ it: MediaItem) { resume[it.key] = nil; markWatched(it); save() }
     func resumePoint(_ it: MediaItem) -> ResumePoint? { resume[it.key] }
     /// Newest first; one entry per series (its latest episode).
     var continueList: [ResumePoint] {
@@ -131,6 +141,31 @@ final class UserStore: ObservableObject {
         if p.subLang != nil || p.subOff != nil || p.subOnline != nil { g.subLang = p.subLang; g.subOff = p.subOff; g.subOnline = p.subOnline }
         trackPrefs["*"] = g
         saveJSON("nx.tracks", trackPrefs)
+    }
+
+    // MARK: player redesign 2026-10-25 (the Mac player uses the same members)
+
+    /// Per show: where its credits start, as seconds BEFORE the end of the file; the last 5 samples (UserDefaults "nx.credits").
+    private var creditsSamples: [String: [Int]] = loadJSON("nx.credits", [:])
+    func creditsMemory(seriesId: String) -> [Int] { creditsSamples[seriesId] ?? [] }
+    func recordCredits(seriesId: String, secondsBeforeEnd: Int) {
+        guard secondsBeforeEnd > 0 else { return }
+        creditsSamples[seriesId] = Array(((creditsSamples[seriesId] ?? []) + [secondsBeforeEnd]).suffix(CreditsCue.keep))
+        saveJSON("nx.credits", creditsSamples)
+    }
+
+    /// Episodes the owner has watched to the end (shown as WATCHED on the episode cards); "nx.watched".
+    private var watchedKeys: Set<String> = Set(loadJSON("nx.watched", [String]()))
+    func isWatched(_ it: MediaItem) -> Bool { watchedKeys.contains(it.key) }
+    func markWatched(_ it: MediaItem) { if watchedKeys.insert(it.key).inserted { saveJSON("nx.watched", Array(watchedKeys)) } }
+
+    /// The "Still watching?" policy: key presses, autoplayed episodes, quick answers. Not published: nothing redraws on it.
+    var watching = StillWatching(lastKeyAt: Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: "nx.lastKey")))
+    private var lastKeySaved = Date.distantPast
+    /// Any remote key press (or, on Mac, a key press in the player window). The 90-minute rule survives a restart.
+    func noteKey(_ now: Date = Date()) {
+        watching.key(now)
+        if now.timeIntervalSince(lastKeySaved) > 30 { lastKeySaved = now; UserDefaults.standard.set(now.timeIntervalSince1970, forKey: "nx.lastKey") }
     }
 
     func clearMyList() { myList = []; save(); show("My List cleared") }
@@ -338,5 +373,89 @@ final class Settings: ObservableObject {
         tabs = Settings.defaultTabs
         homeRows = Settings.defaultRows(countries)
         tileOrder = [:]
+    }
+}
+
+
+// MARK: - Credits cue and "Still watching?" (pure rules, unit tested; both apps)
+
+/// Where the credits of an episode start, in order of trust:
+/// 1. the show's memory: the median of the last 5 samples (seconds before the end) the owner gave by pressing Next episode
+///    or by watching to the end;
+/// 2. no memory: the file's subtitle cues go quiet for 45 s inside the last 6 minutes;
+/// 3. otherwise the last 2 % of the runtime, never under 20 s.
+enum CreditsCue {
+    static let keep = 5                    // samples kept per show
+    static let quietMs = 45_000            // no subtitle cue for this long ...
+    static let quietWindowMs = 360_000     // ... inside the last 6 minutes
+    static let sampleWindowMs = 480_000    // a press counts as a sample only with under 8 minutes left
+    static let floorMs = 20_000
+
+    /// Median of the last `keep` samples; nil when there are none. An even count averages the two middle values.
+    static func median(_ samples: [Int]) -> Int? {
+        let s = samples.suffix(keep).sorted()
+        guard !s.isEmpty else { return nil }
+        return s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2
+    }
+
+    /// Where the speech stopped: with `cueStartsMs` (start times of the subtitle cues), the start of a gap of 45 s that lies
+    /// inside the last 6 minutes and is already over at `nowMs`. nil while the dialogue goes on.
+    static func quietStart(cueStartsMs: [Int], nowMs: Int, lengthMs: Int) -> Int? {
+        let windowStart = max(0, lengthMs - quietWindowMs)
+        let last = cueStartsMs.filter { $0 <= nowMs }.max() ?? 0
+        let from = max(windowStart, last)
+        return nowMs - from >= quietMs ? from : nil
+    }
+
+    /// The credits cue in ms from the start of the file. Always a value: the 2 % rule is the floor.
+    /// `cueStartsMs`: nil when the file has no subtitle track the player could read.
+    static func cueMs(lengthMs: Int, memorySecondsBeforeEnd: [Int], cueStartsMs: [Int]?, nowMs: Int) -> Int {
+        if let m = median(memorySecondsBeforeEnd) { return max(0, lengthMs - m * 1000) }
+        if let c = cueStartsMs, !c.isEmpty, let q = quietStart(cueStartsMs: c, nowMs: nowMs, lengthMs: lengthMs) { return q }
+        return lengthMs - max(lengthMs / 50, floorMs)
+    }
+
+    /// Sample from a press of Next episode / the end card's OK: seconds before the end, only with under 8 minutes left.
+    static func pressSample(remainingMs: Int) -> Int? {
+        remainingMs > 0 && remainingMs <= sampleWindowMs ? remainingMs / 1000 : nil
+    }
+
+    /// Sample when the file plays to its end: where the owner last interacted (seek or key) if that is inside the last 8
+    /// minutes, else the quiet point; nil when neither is known.
+    static func endSample(lengthMs: Int, lastInteractionMs: Int?, quietPointMs: Int?) -> Int? {
+        if let i = lastInteractionMs, lengthMs - i > 0, lengthMs - i <= sampleWindowMs { return (lengthMs - i) / 1000 }
+        if let q = quietPointMs, lengthMs - q > 0 { return (lengthMs - q) / 1000 }
+        return nil
+    }
+}
+
+/// When to ask "Still watching?" (asked at the start of an episode that autoplayed).
+struct StillWatching: Equatable {
+    var lastKeyAt: Date = .distantPast
+    /// Mac: the last time the pointer moved while the player window was key.
+    var lastPointerAt: Date = .distantPast
+    /// Autoplayed episodes since the last key press of this session.
+    var autoplays = 0
+    /// "Keep watching" answers given within 10 s, in a row.
+    var quickKeeps = 0
+    /// 90 minutes; the simulator tests shorten it with -NXStillWindowSec.
+    static var window: TimeInterval { let v = UserDefaults.standard.double(forKey: "NXStillWindowSec"); return v > 0 ? v : 90 * 60 }
+    static let quickAnswer: TimeInterval = 10
+
+    /// 2 autoplayed episodes; after two quick "Keep watching" answers in a row, 4.
+    var threshold: Int { quickKeeps >= 2 ? 4 : 2 }
+    mutating func key(_ now: Date) { lastKeyAt = now; autoplays = 0 }
+    mutating func pointer(_ now: Date) { lastPointerAt = now }
+    mutating func autoplayed() { autoplays += 1 }
+    /// `windowIsKey`: Mac only (the player window is the key window).
+    func shouldAsk(now: Date, windowIsKey: Bool = false) -> Bool {
+        guard autoplays >= threshold else { return false }
+        if now.timeIntervalSince(lastKeyAt) <= Self.window { return false }
+        if windowIsKey && now.timeIntervalSince(lastPointerAt) <= Self.window { return false }
+        return true
+    }
+    /// The owner answered the toast. "Keep watching" is a key press; a quick one counts towards the longer wait.
+    mutating func answered(keep: Bool, after seconds: TimeInterval, now: Date) {
+        if keep { quickKeeps = seconds <= Self.quickAnswer ? quickKeeps + 1 : 0; key(now) } else { quickKeeps = 0 }
     }
 }

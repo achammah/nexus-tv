@@ -58,8 +58,8 @@ final class Build4Tests: XCTestCase {
         shot("t4-1-subtitles")
         press(.up, 3, wait: 1); press(.select, wait: 3)        // another subtitle track (the choice is logged as player.choose)
         shot("t4-2-subtitles-on")
-        press(.up, wait: 1)                                    // focus is back on Subtitles: Next episode is above the bar
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Next episode' AND hasFocus == true")).count > 0, "Next episode focused; focused: \(focusedLabel)")
+        press(.right, wait: 2)                                 // focus is back on Subtitles: Episodes (its strip rises) is to the right
+        press(.down, wait: 1); press(.right, wait: 1)          // the strip: the playing episode, then the next
         press(.select, wait: 30)
         press(.up, wait: 1)
         shot("t4-3-next-episode")

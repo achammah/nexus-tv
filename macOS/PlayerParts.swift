@@ -113,14 +113,14 @@ struct VODLayer: View {
 
     private var audioValue: String {
         let list = vlc.audioTracks
-        let labels = TrackLabel.make(tracks: vlc.trackInputs(audio: true, list: list))
+        let labels = MacTrackLabel.make(tracks: vlc.trackInputs(audio: true, list: list))
         return labels.first { $0.id == vlc.audioIndex }?.text ?? (list.isEmpty ? "none" : "")
     }
     private var subtitleValue: String {
         if model.onlineTrack != nil && vlc.subtitleIndex == model.onlineTrack,
            let r = model.online.first(where: { $0.fileId == model.onlineActive }) { return OpenSubtitles.languageName(r.lang) }
         let embedded = vlc.subtitleTracks.filter { $0.0 != model.onlineTrack }
-        let labels = TrackLabel.make(tracks: vlc.trackInputs(audio: false, list: embedded))
+        let labels = MacTrackLabel.make(tracks: vlc.trackInputs(audio: false, list: embedded))
         return labels.first { $0.id == vlc.subtitleIndex }?.text ?? "Off"
     }
 
@@ -206,7 +206,7 @@ struct TrackPopup: View {
 
     private var audio: some View {
         let list = vlc.audioTracks
-        let labels = TrackLabel.make(tracks: vlc.trackInputs(audio: true, list: list))
+        let labels = MacTrackLabel.make(tracks: vlc.trackInputs(audio: true, list: list))
         return VStack(alignment: .leading, spacing: 2) {
             if list.count < 2 { Text("Only one audio track").font(.system(size: 12)).foregroundStyle(MacTheme.dim).padding(.horizontal, 10).padding(.vertical, 4) }
             ForEach(labels) { l in
@@ -220,7 +220,7 @@ struct TrackPopup: View {
 
     private var subtitles: some View {
         let embedded = vlc.subtitleTracks.filter { $0.0 != model.onlineTrack && $0.0 >= 0 }
-        let labels = TrackLabel.make(tracks: vlc.trackInputs(audio: false, list: embedded))
+        let labels = MacTrackLabel.make(tracks: vlc.trackInputs(audio: false, list: embedded))
         let current = vlc.subtitleIndex
         let onlineOn = model.onlineTrack != nil && current == model.onlineTrack
         return VStack(alignment: .leading, spacing: 2) {
