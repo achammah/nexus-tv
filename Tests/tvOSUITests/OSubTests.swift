@@ -31,10 +31,10 @@ final class OSubTests: XCTestCase {
         guard let key = env["NX_OS_KEY"], let user = env["NX_OS_USER"], let pass = env["NX_OS_PASS"] else { XCTFail("NX_OS_* not set"); return }
         launch(["-NXTab", "settings", "-NXResetOSub", "YES"])
         press(.down, wait: 1)
-        XCTAssertTrue(focusTo("Menu tabs", .up), "sidebar")
-        XCTAssertTrue(focusTo("Subtitles", .down), "Subtitles section")
+        XCTAssertTrue(focusTo("Account & sources", .up), "sidebar")
+        XCTAssertTrue(focusTo("Playback & subtitles", .down), "Playback & subtitles section")
         press(.right, wait: 1)
-        XCTAssertTrue(focusTo("Add an OpenSubtitles account", .up), "add button")
+        XCTAssertTrue(focusTo("Add an OpenSubtitles account", .down), "add button")   // the OpenSubtitles group sits below Audio and Subtitles
         press(.select, wait: 2)
         type(key); press(.down, wait: 1)
         type(user); press(.down, wait: 1)
@@ -42,7 +42,7 @@ final class OSubTests: XCTestCase {
         XCTAssertTrue(focusTo("Check and save", .left), "Check and save")
         press(.select, wait: 8)
         shot("o-1-signed-in")   // names the account user only
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Signed in as'")).count > 0, "signed in")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Signed in as'")).count > 0, "signed in")
     }
 
     // CC menu: embedded tracks, then online results in the owner's languages; a pick shows and is marked

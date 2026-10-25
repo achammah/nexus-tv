@@ -166,12 +166,12 @@ final class RemoteJourneyTests: XCTestCase {
     func test7_SettingsListsAccounts() {
         launch(["-NXTab", "settings", "-NXResetLayout", "YES"])
         press(.down, wait: 1)
-        focusTo("Menu tabs", .up)
+        focusTo("Account & sources", .up)
+        focusTo("Home & views", .down)
         press(.right, wait: 1)
-        focusTo("Edit order", .up)
+        focusTo("Reset layout", .down)
         press(.select, wait: 1)
-        shot("t1-edit-order")
-        press(.select, wait: 1)                                // Done
+        shot("t1-home-views")
         press(.left, wait: 1)
         focusTo("Lists", .down)
         press(.right, wait: 1)
@@ -184,9 +184,9 @@ final class RemoteJourneyTests: XCTestCase {
         press(.menu, wait: 2)
         shot("t4-lists")
         press(.left, wait: 1)
-        focusTo("Accounts", .down)
+        focusTo("Account & sources", .down)
         press(.right, wait: 1)
-        focusTo("Add an account", .up)
+        focusTo("Add a source", .up)
         press(.select, wait: 2)
         focusTo("Cancel", .down)
         press(.left, wait: 1)                                  // Check and save
@@ -195,7 +195,7 @@ final class RemoteJourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Server, username and password are all needed."].exists, "an empty account is refused")
         press(.menu, wait: 2)
         press(.left, wait: 1)
-        focusTo("Clear lists", .down)
+        focusTo("Data & storage", .down)
         shot("t6-clear")
     }
 
@@ -232,7 +232,7 @@ final class RemoteJourneyTests: XCTestCase {
     /// From anywhere in Settings: the Accounts section, focus in its pane.
     func goAccounts() {
         press(.left, 2, wait: 1)
-        focusTo("Accounts", .down)
+        focusTo("Account & sources", .down)
         press(.right, wait: 1)
     }
 
@@ -248,8 +248,8 @@ final class RemoteJourneyTests: XCTestCase {
         guard let server = env["NX_SERVER"], let user = env["NX_USER"], let pass = env["NX_PASS"] else { XCTFail("NX_* not set"); return }
         launch(["-NXTab", "settings"])
         press(.down, wait: 1)
-        focusTo("Accounts", .down)
-        press(.right, wait: 1); focusTo("Add an account", .up)
+        focusTo("Account & sources", .down)
+        press(.right, wait: 1); focusTo("Add a source", .up)
         // 1. wrong login (real server, wrong user): refused, nothing saved
         press(.select, wait: 2)
         type("Wrong login"); press(.down, wait: 1)
@@ -263,7 +263,7 @@ final class RemoteJourneyTests: XCTestCase {
         press(.right, wait: 1); press(.select, wait: 2)        // Cancel
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Wrong login'")).count > 0, "the refused account was not saved")
         // 2. a valid second account
-        goAccounts(); focusTo("Add an account", .up); press(.select, wait: 2)
+        goAccounts(); focusTo("Add a source", .up); press(.select, wait: 2)
         type("Second"); press(.down, wait: 1)
         type(server); press(.down, wait: 1)
         type(user); press(.down, wait: 1)

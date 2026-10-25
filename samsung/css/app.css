@@ -554,37 +554,49 @@ html.intro #gpk, html.playing #gpk { visibility: hidden; }
 .lct.hasimg .wm { display: none; }
 .lcard .tx { right: auto; width: 270px; }
 
-/* ---------- Settings: one page of grouped sections like the Mac (js/settings.js) ---------- */
-.sthint { position: absolute; font-size: 21px; color: rgba(255,255,255,.5); white-space: nowrap; }
-.stbox { position: absolute; border-radius: 18px; background: rgba(255,255,255,.06); }
-.srow.strow { height: 96px; border-radius: 18px; background: transparent; }
-.srow.strow.sep:before { content: ''; position: absolute; left: 30px; right: 30px; top: 0; height: 1px; background: rgba(255,255,255,.08); }
-.srow.strow.focus { background: #fff; -webkit-transform: scale(1.015); transform: scale(1.015); z-index: 2; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
-.srow.strow.focus:before, .srow.strow.focus + .srow.strow:before { display: none; }
-.srow.strow .sl { top: 16px; line-height: 36px; font-size: 26px; font-weight: 500; white-space: nowrap; max-width: 900px; overflow: hidden; text-overflow: ellipsis; }
-.srow.strow .sh { position: absolute; top: 54px; line-height: 26px; font-size: 19px; color: rgba(255,255,255,.5); white-space: nowrap; }
-.srow.strow.focus .sh { color: rgba(0,0,0,.55); }
-.srow.strow .mv { left: 30px; line-height: 96px; }
-.srow.strow .sv { right: 24px; line-height: 96px; }
-.srow.strow .sv.on { color: #34C759; font-weight: 700; }
-.srow.strow.focus .sv.on { color: #1E9E44; }
-.srow.strow .sv.chev { font-size: 40px; color: rgba(255,255,255,.4); }
-.srow.strow.focus .sv.chev { color: rgba(0,0,0,.45); }
-.srow.strow .tg { top: 30px; }
-.srow.strow .sic { position: absolute; left: 30px; top: 24px; width: 48px; height: 48px; line-height: 46px; text-align: center; border-radius: 12px; font-size: 32px; font-weight: 300;
-  background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); }
-.srow.strow .sic svg { width: 26px; height: 26px; margin-top: 11px; }
-.srow.strow .sic.on { color: #34C759; }
-.srow.strow.focus .sic { background: rgba(0,0,0,.08); color: rgba(0,0,0,.65); }
-.srow.strow.focus .sic.on { color: #1E9E44; }
-.srow.strow .sb { position: absolute; top: 26px; height: 44px; line-height: 44px; text-align: center; border-radius: 22px; font-size: 20px; font-weight: 600; white-space: nowrap;
-  background: rgba(255,255,255,.12); color: #fff; }
-.srow.strow .sb.red { color: #FF6B78; }
-.srow.strow .sb.chip.on { background: rgba(52,199,89,.28); }
-.srow.strow.focus .sb { background: rgba(0,0,0,.08); color: rgba(0,0,0,.75); }
-.srow.strow.focus .sb.chip.on { background: rgba(52,199,89,.3); color: #0B5D22; }
-.srow.strow.focus .sb.sel { background: #000; color: #fff; }
-.srow.strow.focus .sb.red.sel { background: #FF3B4E; color: #fff; }
+/* ---------- Settings: the approved design (design/settings/st.css), absolute layout for the TV (js/settings.js) ---------- */
+.stcrumb { position: absolute; left: 112px; top: 160px; font-size: 40px; font-weight: 700; line-height: 48px; white-space: nowrap; }
+.stcrumb span { color: rgba(255,255,255,.4); font-weight: 400; }
+.stcrumb i { font-style: normal; color: rgba(255,255,255,.35); margin: 0 16px; font-weight: 300; }
+.stnav { position: absolute; left: 0; width: 470px; height: 84px; line-height: 84px; padding: 0 26px; border-radius: 14px; font-size: 28px; color: rgba(255,255,255,.85); white-space: nowrap;
+  -webkit-transition: -webkit-transform .16s; transition: transform .16s; }
+.stnav em { position: absolute; right: 26px; top: 0; font-style: normal; font-size: 20px; color: rgba(255,255,255,.4); }
+.stnav.sel { background: #fff; color: #000; font-weight: 600; }
+.stnav.sel em { color: rgba(0,0,0,.45); }
+.stnav.f { -webkit-transform: scale(1.04); transform: scale(1.04); box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.sthd { position: absolute; left: 24px; height: 34px; line-height: 34px; font-size: 22px; letter-spacing: 1.2px; color: rgba(255,255,255,.45); font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.stgrp { position: absolute; left: 0; width: 1168px; border-radius: 18px; background: rgba(255,255,255,.06); }
+.strw { position: absolute; left: 0; width: 1168px; height: 92px; padding: 0 28px; font-size: 28px; border-top: 1px solid rgba(255,255,255,.07); }
+.strw.first { border-top: 0; }
+.strw.f { background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 4px #fff; border-radius: 14px; border-top-color: transparent; z-index: 2; }
+.stl { position: absolute; left: 28px; top: 0; line-height: 92px; white-space: nowrap; max-width: 640px; overflow: hidden; text-overflow: ellipsis; }
+.stl.fl { left: 86px; }
+.stl.two { top: 10px; line-height: 36px; }
+.stl small { display: block; font-size: 20px; line-height: 28px; color: rgba(255,255,255,.45); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+.stv { position: absolute; right: 28px; top: 0; height: 92px; line-height: 92px; font-size: 24px; color: rgba(255,255,255,.55); white-space: nowrap; text-align: right; }
+.stv > * { vertical-align: middle; }
+.stv b { color: #fff; font-weight: 500; vertical-align: baseline; }
+.stv .stchev { vertical-align: baseline; }
+.stchev { color: rgba(255,255,255,.35); font-size: 30px; margin-left: 20px; }
+.stflag { width: 40px; height: 40px; border-radius: 50%; }
+.strw > .stflag { position: absolute; left: 28px; top: 26px; }
+.stflags .stflag { margin-left: 4px; box-shadow: 0 0 0 3px #15151a; }
+.stflags .stflag:first-child { margin-left: 0; }
+.stlogo { display: inline-block; position: relative; width: 100px; height: 40px; margin-right: 14px; vertical-align: middle; }
+.stlogo img { position: absolute; left: 0; top: 0; width: 100px; height: 40px; }
+.stbadge { display: inline-block; height: 28px; line-height: 28px; padding: 0 10px; border-radius: 7px; font-size: 15px; font-weight: 700; letter-spacing: .6px; color: #fff; background: rgba(255,255,255,.14); margin-right: 14px; }
+.stbadge.x { background: #4a63ff; } .stbadge.m { background: #b4572a; } .stbadge.p { background: #7a4ab4; } .stbadge.g { background: #1f8f4a; }
+.stpill { display: inline-block; height: 50px; line-height: 50px; padding: 0 20px; border-radius: 25px; background: rgba(255,255,255,.08); font-size: 24px; color: rgba(255,255,255,.75); margin-left: 14px; }
+.stpill.on { background: #fff; color: #000; font-weight: 600; }
+.stpill.pf { box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(255,255,255,.35); }
+.stmove { display: inline-block; height: 50px; line-height: 50px; padding: 0 12px; border-radius: 25px; margin-right: 14px; }
+.stmove.pf { box-shadow: inset 0 0 0 2px rgba(255,255,255,.8); color: #fff; }
+.stmove.on-move { background: #fff; color: #000; }
+.sttogw { display: inline-block; padding: 4px; border-radius: 26px; }
+.sttogw.pf { box-shadow: none; }   /* the toggle is the row's default control: the row outline is enough */
+.sttog { display: inline-block; position: relative; width: 70px; height: 40px; border-radius: 20px; background: rgba(255,255,255,.2); vertical-align: middle; }
+.sttog i { position: absolute; top: 4px; left: 4px; width: 32px; height: 32px; border-radius: 50%; background: #fff; -webkit-transition: left .15s; transition: left .15s; }
+.sttog.on { background: #34c759; } .sttog.on i { left: 34px; }
 
 /* ---------- Live: the view pill (Categories | Full list), the channel grid of one list (js/livehome.js, js/livelist.js) ---------- */
 .pill.lvpill span { color: rgba(255,255,255,.5); margin: 0 8px; }

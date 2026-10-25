@@ -1,5 +1,5 @@
-// Settings: one page like the Mac Settings and Sources pages: sources, Live countries, online subtitles, then
-// menu tabs, Home rows, channels, lists, clear lists and about.
+// Settings: the approved design (design/settings): 7 sections on the left (Account & sources, Channels, Home & views,
+// Lists, Playback & subtitles, Data & storage, About), grouped rows on the right, detail pages for the deeper ones.
 // Stored on the TV under 'nx_settings'. Other screens read Settings.get().
 var Settings = (function () {
     'use strict';
@@ -32,225 +32,369 @@ var Settings = (function () {
     var TYPE = { live: 'Live', vod: 'Films', series: 'Series' };
     var TYPE_NAME = { x: 'Xtream', m: 'M3U', p: 'Portal' };
 
-    // ---------- screen: one page of grouped sections, like the Mac Settings and Sources pages ----------
-    // A row: label left, a short help line under it, its value or controls right. Up/Down move row by row,
-    // Left/Right move between the controls of a row (a source's buttons, the country toggles), OK runs or flips.
-    var SRC_TITLE = { x: 'Xtream login', m: 'M3U playlist', p: 'Portal' };
-    var SRC_ICON = {   // the Mac's symbols: server.rack, link, key
-        x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="7" rx="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.5"/><path d="M8 6.5h.01M8 17.5h.01"/></svg>',
-        m: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
-        p: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>'
-    };
-    // Mac sections first, in the Mac order (Sources, Live countries, online subtitles), then the Frame's own ones.
-    var ALL_SECTIONS = [
-        { id: 'accounts', title: 'Sources', hint: 'Your sources, kept on this TV and never shown.' },
-        { id: 'countries', title: 'Live countries', hint: '' },
-        { id: 'subs', title: 'Online subtitles (OpenSubtitles)', hint: '' },
-        { id: 'tabs', title: 'Menu tabs', hint: '' },
-        { id: 'rows', title: 'Home rows', hint: '' },
-        { id: 'channels', title: 'Channels', hint: '' },
-        { id: 'lists', title: 'Lists', hint: '' },
-        { id: 'clear', title: 'Clear lists', hint: '' },
-        { id: 'about', title: 'About', hint: '' }
-    ];
-    // Live countries only means something for an Xtream source
-    var SECTIONS = [];
-    function sections() { SECTIONS.length = 0; for (var i = 0; i < ALL_SECTIONS.length; i++) if (ALL_SECTIONS[i].id !== 'countries' || U.accounts.type() === 'x') SECTIONS.push(ALL_SECTIONS[i]); if (sec >= SECTIONS.length) sec = 0; }
-    var el, sec = 0, item = 0, act = 0, active = false, moving = false, editing = false, shift = 0;
-    var X0 = 112, W = 1920 - 2 * X0, ROW_H = 96, HEAD = 58, GAP = 34, TOP = 236, BOTTOM = 1040;
+    // ---------- screen: the approved design (design/settings s1 to s4) ----------
+    // Left: 7 sections, each with a live summary; the selected one is the white pill. Right: small-caps headers over
+    // grouped rows (label and help line left; value, pills, toggle or chevron right); the focused row has the white
+    // outline. Left / Right move between the column and the rows (and across a row's pills), Up / Down move within,
+    // OK toggles or opens, Back goes from a detail page to its section, then to the column, then to the menu.
+    var X_NAV = 112, X_PANE = 640, W_PANE = 1168, TOP = 240, ROW_H = 92, HD_H = 60, GAP = 0, BOTTOM = 1040;
+    var SECTIONS = [['account', 'Account & sources'], ['channels', 'Channels'], ['views', 'Home & views'], ['lists', 'Lists'],
+        ['playback', 'Playback & subtitles'], ['data', 'Data & storage'], ['about', 'About']];
+    var BADGE = { x: ['XTREAM', 'x'], m: ['M3U', 'm'], p: ['PORTAL', 'p'] };
+    var SRC_TITLE = { x: 'Xtream login', m: 'M3U playlist', p: 'Stalker portal' };
+    var CC_NAME = { be: 'Belgium', fr: 'France', uk: 'United Kingdom', us: 'United States' };
+    var CC_FLAG = { be: 'be', fr: 'fr', uk: 'gb', us: 'us' };
+    // Region codes of the provider and their names: the same table as js/livehome.js REGIONS (titles only).
+    var REGION_NAME = { AR: 'Arabic', ASIA: 'Asia', LAT: 'Latin America', LA: 'Latin America', BEE: 'beIN & Arabic sports', EXYU: 'Ex-Yugoslavia', AFR: 'Africa', CRB: 'Caribbean', KU: 'Kurdish', EU: 'Europe', NA: 'North Africa' };
+    var LANGS = [['en', 'English'], ['fr', 'French'], ['nl', 'Dutch'], ['de', 'German'], ['es', 'Spanish'], ['it', 'Italian'], ['ar', 'Arabic'], ['orig', 'Original']];
+    var LIB_LANGS = [['EN', 'English'], ['FR', 'Français'], ['', 'All languages']];
 
-    // items of one section: { id, label, help, value, on (toggle), acts: [[id, label]], chips, ... }
-    function items(si) {
-        var s = SECTIONS[si].id;
-        if (s === 'tabs') return [{ id: 'edit', label: editing && si === sec ? 'Done' : 'Edit order', help: editing && si === sec ? (moving ? 'Up and Down move the tab. OK drops it.' : 'OK picks up a tab. Back finishes.') : 'Move the tabs of the menu. Home stays first.', btn: true, edit: true }]
-            .concat(S.tabs.map(function (id) { return { id: id, label: label(ALL_TABS, id), on: S.hideTabs.indexOf(id) < 0, fixed: id === 'home', move: true }; }));
-        if (s === 'rows') return [{ id: 'edit', label: editing && si === sec ? 'Done' : 'Edit order', help: editing && si === sec ? (moving ? 'Up and Down move the row. OK drops it.' : 'OK picks up a row. Back finishes.') : 'Move the rows of Home. OK on a row shows or hides it.', btn: true, edit: true }]
-            .concat(S.rows.map(function (id) { return { id: id, label: label(ALL_ROWS, id), on: S.hideRows.indexOf(id) < 0, move: true }; }));
-        if (s === 'channels') return [{ id: 'browse', label: 'Browse all channels', help: 'Every channel of your source. Star the ones you want first on Home.', btn: true }]
-            .concat(U.favs().map(function (f) { return { id: f.sid, label: f.name, help: 'Starred · OK removes the star', value: String(f.cc || '').toUpperCase() }; }));
-        if (s === 'lists') return [{ id: '+', label: 'Browse all lists', help: 'Every category of your source. Add any as a Home row.', btn: true }]
-            .concat(S.lists.map(function (l) { return { id: l.key, label: l.name, help: 'On Home · OK removes it', value: TYPE[l.t] }; }));
-        if (s === 'accounts') {
-            var cur = U.accounts.active().id, rows = [];
-            U.accounts.list().forEach(function (a) {
-                var t = a.type || 'x', on = a.id === cur, acts = [];
-                if (a.big) acts.push(['groups', 'Choose groups']);
-                if (!on) { acts.push(['switch', 'Switch']); acts.push(['remove', 'Remove']); }
-                rows.push({ id: a.id, src: a, icon: SRC_ICON[t], label: a.name || a.user || 'Source', on: on,
-                    help: a.note || (SRC_TITLE[t] + (a.big ? ' · ' + (a.groups || []).length + ' of ' + (a.ngroups || '?') + ' groups' : '')), status: on ? 'Active' : '', acts: acts });
-            });
-            rows.push({ id: '+', label: 'Add a source', help: 'An Xtream login, an M3U playlist or a portal.', btn: true, plus: true });
-            return rows;
-        }
-        if (s === 'subs') {
-            var oa = Subs.account(), left = Subs.left();
-            if (oa && oa.key) return [{ id: 'osub', label: 'Signed in as ' + (oa.user || 'API key only') + (left != null ? ' · ' + left + ' downloads left today' : ''), help: 'Subtitles for any film or episode, in the CC menu.', acts: [['change', 'Change account']] }];
-            return [{ id: 'osub', label: 'API key, username and password', help: 'Create the key on opensubtitles.com, profile, API consumers.', acts: [['change', 'Check and save']] }];
-        }
-        if (s === 'countries') return [{ id: 'cc', label: 'Countries on Live and Home', help: 'OK adds or removes a country. At least one stays on.',
-            chips: ALL_CC.map(function (c) { return { id: c[0], label: c[1], on: S.countries.indexOf(c[0]) >= 0 }; }) }];
-        if (s === 'clear') return [
-            { id: 'favs', label: 'Favourite channels', help: U.favs().length + (U.favs().length === 1 ? ' channel' : ' channels') + ' on this TV', acts: [['clear', 'Clear']] },
-            { id: 'continue', label: 'Continue watching', help: U.continueList().length + (U.continueList().length === 1 ? ' title' : ' titles') + ' on this TV', acts: [['clear', 'Clear']] },
-            { id: 'mylist', label: 'My List', help: U.myList().length + (U.myList().length === 1 ? ' title' : ' titles') + ' on this TV', acts: [['clear', 'Clear']] }];
-        return [{ id: 'v', label: 'Nexus TV', help: 'Samsung Frame', value: 'Version 1.1' }, { id: 'acc', label: 'Source', help: 'The active source', value: U.accounts.active().name || 'Signed in' }];
+    // Playback preferences with no reader yet: kept here so the choice survives; nothing else in the app reads them
+    // (the player keeps choosing per title from U.getTrackPref and its own language order).
+    var P_KEY = 'nx_play';
+    var P = (function () { var p; try { p = JSON.parse(localStorage.getItem(P_KEY) || 'null'); } catch (e) { p = null; } p = p || {};
+        return { audio: p.audio || ['en', 'fr', 'orig'], remember: p.remember !== false, show: p.show || 'notmine', subLangs: p.subLangs || ['en', 'fr'], autoFetch: p.autoFetch !== false, hideSmall: p.hideSmall !== false }; })();
+    function saveP() { try { localStorage.setItem(P_KEY, JSON.stringify(P)); } catch (e) { /* full */ } }
+    function liveView() { try { return localStorage.getItem('nx_live_view') === 'full' ? 'full' : 'cat'; } catch (e) { return 'cat'; } }
+    function libLang() { try { var v = localStorage.getItem('nx_lib_lang'); return v === null ? 'EN' : v; } catch (e) { return 'EN'; } }
+    function langName(c) { for (var i = 0; i < LANGS.length; i++) if (LANGS[i][0] === c) return LANGS[i][1]; return c; }
+    function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function favsOf(cc) { return U.favs().filter(function (f) { return (f.cc || '') === cc; }); }
+    function flag(cc) { return '<img class="stflag" src="img/flags/' + (CC_FLAG[cc] || cc) + '.png" onerror="this.style.display=\'none\'">'; }
+    function chev() { return '<span class="stchev">&#8250;</span>'; }
+    function tog(on) { return '<span class="sttog' + (on ? ' on' : '') + '"><i></i></span>'; }
+    function badge(t) { var b = BADGE[t] || BADGE.x; return '<span class="stbadge ' + b[1] + '">' + b[0] + '</span>'; }
+    var counts = null;
+    function loadCounts() {
+        if (counts || !U.accounts.has()) return;
+        counts = { live: null, vod: null, series: null };
+        ['live', 'vod', 'series'].forEach(function (t) { Data.categories(t, function (l) { counts[t] = (l || []).length; if (built) render(); }); });
     }
-    // the page: section heading (.rowtitle), help line, then its rows in one rounded box
-    function layout() {
-        var y = TOP, out = [];
-        for (var i = 0; i < SECTIONS.length; i++) {
-            var it = items(i), top = y;
-            y += HEAD + (SECTIONS[i].hint ? 34 : 0);
-            out.push({ head: top, box: y, it: it });
-            y += it.length * ROW_H + GAP;
+
+    var el, active = false, built = false, col = 0, sec = 0, row = 0, pi = 0, page = null, moving = false, shift = 0, rowsNow = [];
+
+    // ---------- the rows of a section (or of a detail page): [{ hd } | { id, label, help, right, kind, ... }] ----------
+    function sectionRows(id) {
+        var out = [];
+        if (id === 'account') {
+            var act = U.accounts.active(), others = U.accounts.list().filter(function (a) { return a.id !== act.id; });
+            var t = act.type || 'x', parts = [];
+            if (counts && counts.live != null) parts.push(fmt(counts.live) + ' live lists');
+            if (counts && counts.vod != null && t === 'x') parts.push(fmt(counts.vod) + ' film lists');
+            if (counts && counts.series != null && t === 'x') parts.push(fmt(counts.series) + ' series lists');
+            parts.push('1 stream at a time');
+            out.push({ hd: 'Active source' });
+            out.push({ id: 'src:' + act.id, label: act.name || act.user || 'My source', help: parts.join(' · '), right: badge(t) + '<b>Active</b>' + chev(), open: function () { return sourcePage(act, true); } });
+            out.push({ hd: 'Other sources' });
+            others.forEach(function (a) {
+                var ty = a.type || 'x';
+                out.push({ id: 'src:' + a.id, label: a.name || a.user || 'Source', help: SRC_TITLE[ty] + (a.big ? ' · ' + (a.groups || []).length + ' of ' + (a.ngroups || '?') + ' groups chosen' : ''),
+                    right: badge(ty) + 'Switch' + (a.big ? ' · Choose groups' : '') + ' · Remove' + chev(), open: function () { return sourcePage(a, false); } });
+            });
+            out.push({ id: 'add', label: 'Add a source', right: 'Xtream login · M3U playlist · Stalker portal' + chev(), run: function () { Onboard.open({ add: true }); } });
+            var last = 0; try { last = +localStorage.getItem('nx_refreshed') || 0; } catch (e) { /* none */ }
+            out.push({ hd: 'Catalogue' });
+            out.push({ id: 'refresh', label: 'Refresh catalogue', help: last ? 'Last refreshed ' + when(last) : 'Loads the source’s lists again', right: 'Refresh now' + chev(), run: function () {
+                try { localStorage.setItem('nx_refreshed', String(Date.now())); } catch (e) { /* full */ }
+                U.toast('Refreshing…'); setTimeout(function () { location.reload(); }, 600); } });
+        } else if (id === 'channels') {
+            var flags = '<span class="stflags">' + S.countries.map(flag).join('') + '</span>';
+            out.push({ hd: 'Countries on Live and Home' });
+            out.push({ id: 'pinned', label: 'Pinned countries', help: 'Shown first on Live, each with its own row on Home', right: flags + '<b>&nbsp;' + S.countries.length + '</b>' + chev(), open: pinnedPage });
+            out.push({ id: 'regions', label: 'Regions', right: (regionNames || 'Every region of your source') + chev(), run: function () { goLive(); } });
+            out.push({ hd: 'Starred channels' });
+            S.countries.forEach(function (cc) {
+                var f = favsOf(cc), names = f.slice(0, 4).map(function (x) { return x.name; }).join(', ') + (f.length > 4 ? ' + ' + (f.length - 4) : '');
+                var logos = ''; f.slice(0, 3).forEach(function (x) { if (x.img) logos += '<span class="stlogo">' + U.imgTag(x.img) + '</span>'; });
+                out.push({ id: 'fav:' + cc, label: CC_NAME[cc] || cc.toUpperCase(), help: f.length ? names : 'None yet', right: f.length ? logos + '<b>' + f.length + ' &#9733;</b>' + chev() : 'Browse channels' + chev(), run: function () { ChannelPicker.open(cc); } });
+            });
+            var other = U.favs().filter(function (x) { return S.countries.indexOf(x.cc || '') < 0; });
+            if (other.length) out.push({ id: 'fav:other', label: 'Other countries', help: other.slice(0, 4).map(function (x) { return x.name; }).join(', '), right: '<b>' + other.length + ' &#9733;</b>' + chev(), run: function () { ChannelPicker.open(); } });
+            out.push({ hd: 'Channel pages' });
+            out.push({ id: 'liveview', label: 'Live view', pills: [['cat', 'Categories', liveView() === 'cat'], ['full', 'Full list', liveView() === 'full']], pick: function (v) { try { localStorage.setItem('nx_live_view', v); } catch (e) { /* full */ } } });
+            // stored only: the Live pages always hide lists under 8 channels for now; nothing reads this value yet
+            out.push({ id: 'small', label: 'Hide small lists', help: 'Lists under 8 channels stay behind a button', toggle: P.hideSmall, flip: function () { P.hideSmall = !P.hideSmall; saveP(); } });
+        } else if (id === 'views') {
+            out.push({ hd: 'Home rows · in order' });
+            S.rows.forEach(function (r) {
+                var cc = /^(be|fr|uk|us)$/.test(r);
+                out.push({ id: 'row:' + r, label: cc ? CC_NAME[r] : label(ALL_ROWS, r), help: cc ? 'Live now' : '', move: true, toggle: S.hideRows.indexOf(r) < 0,
+                    flip: function () { flip(S.hideRows, r); changed('rows'); } });
+            });
+            out.push({ hd: 'Menu tabs' });
+            out.push({ id: 'tabs', label: 'Tabs shown in the top menu', pills: S.tabs.map(function (t) { return [t, label(ALL_TABS, t), S.hideTabs.indexOf(t) < 0]; }), multi: true,
+                pick: function (t) { if (t === 'home') { U.toast('Home is always shown'); return; } flip(S.hideTabs, t); changed('tabs'); } });
+            out.push({ hd: 'Look' });
+            out.push({ id: 'reset', label: 'Reset layout', help: 'Rows, tabs and tile order back to default', right: 'Reset' + chev(), run: function () {
+                S.tabs = ids(ALL_TABS); S.hideTabs = []; S.rows = ids(ALL_ROWS); S.hideRows = []; S.tileOrder = {};
+                S.lists.forEach(function (l) { S.rows.splice(1, 0, l.key); });
+                changed('tabs'); changed('rows'); U.toast('Layout reset'); } });
+        } else if (id === 'lists') {
+            out.push({ hd: 'Lists on Home' });
+            S.lists.forEach(function (l) { out.push({ id: l.key, label: l.name, help: TYPE[l.t] + ' · a row on Home', right: 'Remove' + chev(), run: function () { Settings.removeList(l.key); } }); });
+            out.push({ id: 'addlist', label: 'Add a list', help: 'Every category of your source: live, films and series', right: 'Browse all lists' + chev(), run: function () { Picker.open(); } });
+        } else if (id === 'playback') {
+            var oa = Subs.account(), left = Subs.left();
+            out.push({ hd: 'Audio' });
+            out.push({ id: 'audio', label: 'Preferred audio languages', help: 'Picked in this order when a film has them', right: langList(P.audio) + chev(), open: function () { return orderPage('Preferred audio languages', 'audio'); } });
+            out.push({ id: 'remember', label: 'Remember my choice per title', toggle: P.remember, flip: function () { P.remember = !P.remember; saveP(); } });
+            out.push({ hd: 'Subtitles' });
+            out.push({ id: 'show', label: 'Show subtitles', pills: [['always', 'Always', P.show === 'always'], ['notmine', 'When audio is not my language', P.show === 'notmine'], ['never', 'Never', P.show === 'never']],
+                pick: function (v) { P.show = v; saveP(); } });
+            out.push({ id: 'sublang', label: 'Subtitle language', right: langList(P.subLangs) + chev(), open: function () { return orderPage('Subtitle language', 'subLangs'); } });
+            var ll = libLang(), lln = ''; LIB_LANGS.forEach(function (x) { if (x[0] === ll) lln = x[1]; });
+            out.push({ id: 'liblang', label: 'Film and series languages', help: 'Which catalogue lists you see', right: '<b>' + U.esc(lln) + '</b>' + chev(), open: libPage });
+            out.push({ hd: 'OpenSubtitles' });
+            out.push({ id: 'osub', label: 'Account', help: 'Online subtitles when a file has none, aligned to the speech',
+                right: (oa && oa.key ? '<span class="stbadge g">SIGNED IN</span>' + U.esc(oa.user || 'API key') + (left != null ? ' · ' + left + ' downloads left today' : '') : '<span class="stbadge">SIGNED OUT</span>Sign in') + chev(),
+                run: function () { SubsForm.open(); } });
+            // stored only: the player fetches online subtitles from each title's own choice; nothing reads this yet
+            out.push({ id: 'autofetch', label: 'Auto-fetch when missing', toggle: P.autoFetch, flip: function () { P.autoFetch = !P.autoFetch; saveP(); } });
+        } else if (id === 'data') {
+            out.push({ hd: 'On this TV' });
+            out.push({ id: 'favs', label: 'Favourite channels', help: count(U.favs().length, 'channel'), right: 'Clear' + chev(), run: function () { U.clearList('favs'); changed('rows'); } });
+            out.push({ id: 'continue', label: 'Continue watching', help: count(U.continueList().length, 'title'), right: 'Clear' + chev(), run: function () { U.clearList('continue'); changed('rows'); } });
+            out.push({ id: 'mylist', label: 'My List', help: count(U.myList().length, 'title'), right: 'Clear' + chev(), run: function () { U.clearList('mylist'); changed('rows'); } });
+            out.push({ id: 'cache', label: 'Cached catalogue', help: 'Lists in memory and the subtitle timing index', right: 'Clear' + chev(), run: function () {
+                try { localStorage.removeItem('nx_subref'); } catch (e) { /* none */ } Data.reset(); counts = null; U.toast('Cache cleared'); } });
+        } else {
+            var model = ''; try { model = webapis.productinfo.getRealModel() || webapis.productinfo.getModel(); } catch (e) { model = 'Samsung TV'; }
+            out.push({ hd: 'Nexus TV' });
+            out.push({ id: 'ver', label: 'Version', right: '1.1' });
+            out.push({ id: 'srcname', label: 'Source', right: U.esc(U.accounts.active().name || 'Signed in') });
+            out.push({ id: 'model', label: 'TV model', right: U.esc(model || 'Samsung TV') });
         }
-        out.end = y;
         return out;
     }
-    function controls(x, f) {
-        var h = '', r = 24;
-        if (x.acts) for (var a = x.acts.length - 1; a >= 0; a--) {
-            var w = 34 + x.acts[a][1].length * 13;
-            h += '<span class="sb' + (x.acts[a][0] === 'remove' || x.acts[a][0] === 'clear' ? ' red' : '') + (f && act === a ? ' sel' : '') + '" style="right:' + r + 'px;width:' + w + 'px">' + U.esc(x.acts[a][1]) + '</span>';
-            r += w + 12;
-        }
-        if (x.status) h += '<span class="sv on" style="right:' + r + 'px">' + U.esc(x.status) + '</span>';
-        if (x.chips) for (var c = x.chips.length - 1; c >= 0; c--) {
-            var cw = 50 + x.chips[c].label.length * 13;
-            h += '<span class="sb chip' + (x.chips[c].on ? ' on' : '') + (f && act === c ? ' sel' : '') + '" style="right:' + r + 'px;width:' + cw + 'px">' + (x.chips[c].on ? '&#10003; ' : '') + U.esc(x.chips[c].label) + '</span>';
-            r += cw + 12;
-        }
-        if (x.value !== undefined) h += '<span class="sv" style="right:' + r + 'px">' + U.esc(x.value) + '</span>';
-        if (x.on !== undefined && !x.acts && !(editing && x.move)) h += '<span class="tg' + (x.on ? ' on' : '') + '">' + (x.fixed ? 'Always on' : x.on ? 'On' : 'Off') + '</span>';
-        if (x.btn) h += '<span class="sv chev">&#8250;</span>';
+    function count(n, unit) { return n + ' ' + unit + (n === 1 ? '' : 's') + ' on this TV'; }
+    function langList(a) { return a.map(function (c, i) { return i === 0 ? '<b>' + langName(c) + '</b>' : langName(c); }).join(', '); }
+    function when(t) { var d = new Date(t), now = new Date(), hm = (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+        return (d.toDateString() === now.toDateString() ? 'today at ' : d.getDate() + '/' + (d.getMonth() + 1) + ' at ') + hm; }
+    var regionNames = '';
+    function loadRegions() {
+        if (regionNames || U.accounts.type() !== 'x') return;
+        Data.categories('live', function (list) {
+            var seen = {}, n = [];
+            (list || []).forEach(function (c) { var m = /^\s*([A-Z0-9]{2,5})\s*\|/.exec(c.name || ''); if (m && REGION_NAME[m[1]] && !seen[REGION_NAME[m[1]]]) { seen[REGION_NAME[m[1]]] = 1; n.push(REGION_NAME[m[1]]); } });
+            regionNames = n.length ? n.slice(0, 3).join(', ') + (n.length > 3 ? ' + ' + (n.length - 3) : '') : 'None in this source';
+            if (built) render();
+        });
+    }
+    function goLive() { for (var t = 0; t < App.tabs.length; t++) if (App.tabs[t].id === 'guide') { App.goTab(t, true); return; } }
+
+    // ---------- detail pages ----------
+    function sourcePage(a, isActive) {
+        var rows = [{ hd: SRC_TITLE[a.type || 'x'] }];
+        if (!isActive) rows.push({ id: 'switch', label: 'Switch to this source', help: 'The app reloads on it', right: chev(), run: function () { U.toast('Switching source…'); setTimeout(function () { U.accounts.use(a.id); }, 400); } });
+        if (a.big) rows.push({ id: 'groups', label: 'Choose groups', help: (a.groups || []).length + ' of ' + (a.ngroups || '?') + ' groups chosen', right: chev(), run: function () {
+            if (a.id !== U.accounts.active().id) { U.toast('Switch to this source first'); return; }
+            Src.repick(a, function (e, info) {
+                if (e) { if (e.message !== 'cancelled') U.toast('Could not read the playlist'); render(); return; }
+                a.groups = info.groups; a.ngroups = info.groupCount; U.accounts.persist(); U.toast('Saved. Reloading…');
+                setTimeout(function () { location.reload(); }, 700);
+            }); } });
+        if (!isActive) rows.push({ id: 'remove', label: 'Remove this source', help: 'Its favourites and lists stay on this TV', right: chev(), run: function () {
+            if (U.accounts.remove(a.id)) { U.toast('Source removed'); closePage(); } else U.toast('Switch to another source first'); } });
+        if (rows.length === 1) rows.push({ id: 'info', label: 'In use', help: 'Switch to another source to remove this one', right: '' });
+        return { title: a.name || a.user || 'Source', rows: rows };
+    }
+    function pinnedPage() {
+        var rows = [{ hd: 'Countries on Live and Home' }];
+        ALL_CC.forEach(function (c) {
+            rows.push({ id: 'cc:' + c[0], label: CC_NAME[c[0]], flag: c[0], toggle: S.countries.indexOf(c[0]) >= 0, flip: function () {
+                var i = S.countries.indexOf(c[0]);
+                if (i >= 0) { if (S.countries.length > 1) S.countries.splice(i, 1); else { U.toast('Keep at least one country'); return; } }
+                else S.countries = ids(ALL_CC).filter(function (x) { return x === c[0] || S.countries.indexOf(x) >= 0; });
+                changed('countries'); } });
+        });
+        return { title: 'Pinned countries', rows: rows };
+    }
+    function orderPage(title, key) {
+        var rows = [{ hd: title + ' · in order' }], list = P[key];
+        list.forEach(function (c) { rows.push({ id: 'lang:' + c, label: langName(c), move: true, list: list, toggle: true, flip: function () { if (list.length > 1) { list.splice(list.indexOf(c), 1); saveP(); } else U.toast('Keep at least one'); } }); });
+        LANGS.forEach(function (l) { if (list.indexOf(l[0]) < 0) rows.push({ id: 'lang:' + l[0], label: l[1], toggle: false, flip: function () { list.push(l[0]); saveP(); } }); });
+        return { title: title, rows: rows, order: key };
+    }
+    function libPage() {
+        var rows = [{ hd: 'Film and series lists' }], cur0 = libLang();
+        LIB_LANGS.forEach(function (l) { rows.push({ id: 'lib:' + l[0], label: l[1], right: l[0] === cur0 ? '<b>&#10003;</b>' : '', run: function () {
+            try { localStorage.setItem('nx_lib_lang', l[0]); } catch (e) { /* full */ } U.toast('Films and Series show ' + l[1] + ' lists after the next launch'); } });
+        });
+        return { title: 'Film and series languages', rows: rows };
+    }
+
+    // ---------- drawing ----------
+    function summary(id) {
+        if (id === 'account') return '1 active';
+        if (id === 'channels') return S.countries.length + ' countries · ' + U.favs().length + ' &#9733;';
+        if (id === 'views') return (S.rows.length - S.hideRows.filter(function (r) { return S.rows.indexOf(r) >= 0; }).length) + ' rows';
+        if (id === 'lists') return String(S.lists.length);
+        if (id === 'playback') { var oa = Subs.account(); return (P.subLangs[0] || 'en').toUpperCase() + (oa && oa.key ? ' · CC' : ''); }
+        if (id === 'about') return '1.1';
+        return '';
+    }
+    function current() { return page ? page.rows : sectionRows(SECTIONS[sec][0]); }
+    function focusable(r) { return r && !r.hd; }
+    function firstRow(rows) { for (var i = 0; i < rows.length; i++) if (focusable(rows[i])) return i; return 0; }
+    function rightHtml(r, f) {
+        var h = '';
+        if (r.move) h += '<span class="stmove' + (f && pi === 0 ? ' pf' : '') + (f && moving ? ' on-move' : '') + '" data-pi="0">Move &#9650; &#9660;</span>';
+        if (r.pills) r.pills.forEach(function (p, i) { h += '<span class="stpill' + (p[2] ? ' on' : '') + (f && pi === i ? ' pf' : '') + '" data-pi="' + i + '">' + U.esc(p[1]) + '</span>'; });
+        if (r.right !== undefined) h += r.right;
+        if (r.toggle !== undefined) h += '<span class="sttogw' + (f && r.move && pi === 1 ? ' pf' : '') + '"' + (r.move ? ' data-pi="1"' : '') + '>' + tog(r.toggle) + '</span>';
         return h;
     }
-    function draw() {
-        var L = layout(), h = '';
-        // keep the focused row between the title and the bottom; the first section keeps the page at the top
-        var fy = L[sec] ? L[sec].box + item * ROW_H : TOP;
-        if (sec === 0 && item < 2) shift = 0;
-        else { if (fy - shift < TOP + 40) shift = fy - TOP - 40; if (fy + ROW_H - shift > BOTTOM) shift = fy + ROW_H - BOTTOM; }
-        shift = Math.max(0, Math.min(shift, Math.max(0, L.end - 1040)));
-        for (var i = 0; i < SECTIONS.length; i++) {
-            var P = L[i], boxH = P.it.length * ROW_H;
-            if (P.box + boxH - shift < 120 || P.head - shift > 1080) continue;     // only what is on screen
-            h += '<div class="rowtitle" style="left:' + X0 + 'px;top:' + (P.head - shift) + 'px">' + U.esc(SECTIONS[i].title) + '</div>';
-            if (SECTIONS[i].hint) h += '<div class="sthint" style="left:' + X0 + 'px;top:' + (P.head + 42 - shift) + 'px">' + U.esc(SECTIONS[i].hint) + '</div>';
-            h += '<div class="stbox" style="left:' + X0 + 'px;top:' + (P.box - shift) + 'px;width:' + W + 'px;height:' + boxH + 'px"></div>';
-            for (var j = 0; j < P.it.length; j++) {
-                var x = P.it[j], y = P.box + j * ROW_H - shift, f = active && i === sec && j === item;
-                if (y + ROW_H < 120 || y > 1080) continue;
-                var lx = 30 + (x.move ? 48 : 0) + (x.icon ? 62 : 0);
-                h += '<div class="srow strow' + (f ? ' focus' : '') + (f && moving ? ' moving' : '') + (x.on === false && x.move ? ' off' : '') + (j ? ' sep' : '') + '" style="left:' + X0 + 'px;top:' + y + 'px;width:' + W + 'px">' +
-                    (x.move ? '<span class="mv">' + (f && moving ? '&#8597;' : '&#8801;') + '</span>' : '') +
-                    (x.icon ? '<span class="sic' + (x.on ? ' on' : '') + '">' + x.icon + '</span>' : '') +
-                    (x.plus ? '<span class="sic">+</span>' : '') +
-                    '<span class="sl" style="left:' + (lx + (x.plus ? 62 : 0)) + 'px">' + U.esc(x.label) + '</span>' +
-                    (x.help ? '<span class="sh" style="left:' + (lx + (x.plus ? 62 : 0)) + 'px">' + U.esc(x.help) + '</span>' : '') + controls(x, f) + '</div>';
-            }
-        }
-        U.$('stItems').innerHTML = h;
-        U.$('stTop').style.opacity = shift > 40 ? '1' : '0';
+    function rowHtml(r, i, y, f) {
+        if (r.hd) return '<div class="sthd" style="top:' + y + 'px">' + U.esc(r.hd) + '</div>';
+        return '<div class="strw' + (f ? ' f' : '') + (r.first ? ' first' : '') + (r.last ? ' last' : '') + '" id="str' + i + '" style="top:' + y + 'px">' +
+            (r.flag ? flag(r.flag) : '') + '<div class="stl' + (r.help ? ' two' : '') + (r.flag ? ' fl' : '') + '">' + U.esc(r.label) + (r.help ? '<small>' + U.esc(r.help) + '</small>' : '') + '</div>' +
+            '<div class="stv" id="stv' + i + '">' + rightHtml(r, f) + '</div></div>';
     }
+    // positions: a header, then its rows as one rounded group
+    function layout(rows) {
+        var y = 0, boxes = [], box = null;
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i];
+            if (r.hd) { if (box) { boxes.push(box); box = null; } r.y = y + (i ? 26 : 0); y = r.y + 46; continue; }
+            if (!box) { box = { y: y, h: 0 }; r.first = true; }
+            r.y = y; y += ROW_H; box.h += ROW_H;
+            r.last = !rows[i + 1] || rows[i + 1].hd;
+        }
+        if (box) boxes.push(box);
+        rows.boxes = boxes; rows.end = y;
+    }
+    function render() {
+        built = true;
+        var nav = '';
+        for (var s = 0; s < SECTIONS.length; s++)
+            nav += '<div class="stnav' + (s === sec ? ' sel' : '') + (active && col === 0 && s === sec ? ' f' : '') + '" style="top:' + (s * 90) + 'px">' + U.esc(SECTIONS[s][1]) + '<em>' + summary(SECTIONS[s][0]) + '</em></div>';
+        U.$('stNav').innerHTML = nav;
+        U.$('stCrumb').innerHTML = 'Settings<i>&#8250;</i><span>' + U.esc(SECTIONS[sec][1]) + '</span>' + (page ? '<i>&#8250;</i><span>' + U.esc(page.title) + '</span>' : '');
+        var rows = current(); rowsNow = rows; layout(rows);
+        if (!focusable(rows[row])) row = firstRow(rows);
+        var h = '';
+        rows.boxes.forEach(function (b) { h += '<div class="stgrp" style="top:' + b.y + 'px;height:' + b.h + 'px"></div>'; });
+        for (var i = 0; i < rows.length; i++) h += rowHtml(rows[i], i, rows[i].y, active && col === 1 && i === row);
+        U.$('stPane').innerHTML = h;
+        scroll();
+    }
+    function scroll() {
+        var r = rowsNow[row], y = r ? r.y : 0, vis = BOTTOM - TOP;
+        if (col === 0) shift = 0;
+        else {
+            if (y - shift < 60) shift = Math.max(0, y - 60);
+            if (y + ROW_H - shift > vis) shift = y + ROW_H - vis;
+            // the header of the first group stays when the first rows fit
+            if (y + ROW_H <= vis) shift = 0;
+        }
+        U.setT(U.$('stPane'), 0, -shift);
+    }
+    // a key press that only moves the focus changes classes, never the pane's content
+    function marks(i, on) {
+        var v = U.$('stv' + i); if (!v) return;
+        var c = v.querySelectorAll('[data-pi]');
+        for (var k = 0; k < c.length; k++) {
+            var want = on && +c[k].getAttribute('data-pi') === pi, cls = c[k].className.replace(/ pf\b| on-move\b/g, '');
+            if (want) cls += ' pf';
+            if (want && moving && /stmove/.test(cls)) cls += ' on-move';
+            c[k].className = cls;
+        }
+    }
+    function refocus(prev) {
+        var a = U.$('str' + prev); if (a && prev !== row) { a.className = a.className.replace(/ f\b/g, ''); marks(prev, false); }
+        var b = U.$('str' + row), on = active && col === 1;
+        if (b) { b.className = b.className.replace(/ f\b/g, '') + (on ? ' f' : ''); marks(row, on); }
+        scroll();
+    }
+    function navFocus() {
+        var list = U.$('stNav').childNodes;
+        for (var s = 0; s < list.length; s++) list[s].className = 'stnav' + (s === sec ? ' sel' : '') + (active && col === 0 && s === sec ? ' f' : '');
+    }
+
+    // ---------- actions ----------
     function changed(what) { save(); App.applySettings(what); }
-    function toggle() {
-        var s = SECTIONS[sec].id, it = items(sec)[item]; if (!it) return;
-        var a = it.acts ? it.acts[act] : null;
-        if (it.edit) { editing = !editing; moving = false; draw(); return; }
-        if (editing && it.move) { moving = !moving; draw(); return; }      // pick up / drop the row
-        if (s === 'tabs' && !it.fixed) { flip(S.hideTabs, it.id); changed('tabs'); }
-        else if (s === 'rows') { flip(S.hideRows, it.id); changed('rows'); }
-        else if (s === 'countries') {
-            var cid = it.chips[act].id, i = S.countries.indexOf(cid);
-            if (i >= 0) { if (S.countries.length > 1) S.countries.splice(i, 1); else { U.toast('Keep at least one country'); return; } }
-            else { S.countries = ids(ALL_CC).filter(function (c) { return c === cid || S.countries.indexOf(c) >= 0; }); }
-            changed('countries');
-        } else if (s === 'clear') { U.clearList(it.id); changed('rows'); }
-        else if (s === 'channels') {
-            if (it.id === 'browse') { ChannelPicker.open(); return; }
-            var f = null; U.favs().forEach(function (x) { if (String(x.sid) === String(it.id)) f = x; });
-            if (f) { U.toggleFav(f); changed('rows'); item = Math.max(0, item - 1); }
-        }
-        else if (s === 'lists') {
-            if (it.id === '+') { Picker.open(); return; }
-            S.lists = S.lists.filter(function (l) { return l.key !== it.id; });
-            S.rows = S.rows.filter(function (r) { return r !== it.id; });
-            changed('rows'); U.toast('List removed'); item = Math.max(0, item - 1);
-        } else if (s === 'subs') { SubsForm.open(); return;
-        } else if (s === 'accounts') {
-            if (it.id === '+') { Onboard.open({ add: true }); return; }
-            if (!a) { U.toast(it.on ? 'Already active' : ''); return; }
-            if (a[0] === 'groups') {      // pick the groups of a very large playlist again
-                var acc = it.src;
-                if (acc.id !== U.accounts.active().id) { U.toast('Switch to this source first'); return; }
-                Src.repick(acc, function (e, info) {
-                    if (e) { if (e.message !== 'cancelled') U.toast('Could not read the playlist'); draw(); return; }
-                    acc.groups = info.groups; acc.ngroups = info.groupCount; U.accounts.persist(); U.toast('Saved. Reloading…');
-                    setTimeout(function () { location.reload(); }, 700);
-                });
-                return;
-            }
-            if (a[0] === 'remove') { if (U.accounts.remove(it.id)) { U.toast('Source removed'); act = 0; } else U.toast('Switch to another source first'); draw(); return; }
-            U.toast('Switching source…'); setTimeout(function () { U.accounts.use(it.id); }, 400);
-        }
-        draw();
-    }
     function flip(list, id) { var i = list.indexOf(id); if (i >= 0) list.splice(i, 1); else list.push(id); }
-    function move(d) {
-        var s = SECTIONS[sec].id; if (s !== 'tabs' && s !== 'rows') return;
-        var list = S[s], at = item - 1, j = at + d;
-        if (at < 0 || j < 0 || j >= list.length) return;
-        if (s === 'tabs' && (list[j] === 'home' || list[at] === 'home')) { U.toast('Home stays first'); return; }
-        var t = list[at]; list[at] = list[j]; list[j] = t; item = j + 1;
-        changed(s); draw();
+    function openPage(p) { page = p; row = firstRow(p.rows); pi = 0; moving = false; render(); }
+    function closePage() { page = null; row = 0; pi = 0; moving = false; render(); }
+    function ok() {
+        var r = rowsNow[row]; if (!focusable(r)) return;
+        if (r.move && pi === 0) { moving = !moving; refocus(row); return; }
+        if (r.pills) {
+            var p = r.pills[pi]; r.pick(p[0]);
+            if (!r.multi) r.pills.forEach(function (x) { x[2] = x[0] === p[0]; }); else if (p[0] !== 'home') p[2] = !p[2];
+            var cs = U.$('stv' + row).querySelectorAll('.stpill');   // the pills' on state: classes only
+            for (var q = 0; q < cs.length; q++) cs[q].className = 'stpill' + (r.pills[q][2] ? ' on' : '') + (q === pi ? ' pf' : '');
+            navFocus(); return;
+        }
+        if (r.flip) { r.flip(); if (page && page.order) { page = orderPage(page.title, page.order); } else if (page && page.title === 'Pinned countries') page = pinnedPage(); render(); return; }
+        if (r.open) { openPage(r.open()); return; }
+        if (r.run) { r.run(); if (!SubsForm.isOpen() && !Picker.isOpen() && !ChannelPicker.isOpen() && !Onboard.isOpen()) { if (page && page.title === 'Film and series languages') page = libPage(); render(); } }
     }
-    function width(it) { return it ? (it.chips ? it.chips.length : it.acts ? it.acts.length : 0) : 0; }
-    function go(si, ii) { if (editing && si !== sec) { editing = moving = false; } sec = si; item = ii; act = 0; draw(); }
+    // Move on a Home row (or a language in order): Up / Down carry it
+    function moveBy(d) {
+        var r = rowsNow[row];
+        if (page && page.order) {
+            var L = P[page.order], id = r.id.slice(5), i = L.indexOf(id), j = i + d;
+            if (i < 0 || j < 0 || j >= L.length) return;
+            L[i] = L[j]; L[j] = id; saveP(); page = orderPage(page.title, page.order); row += d; render(); return;
+        }
+        var key = r.id.slice(4), a = S.rows.indexOf(key), b = a + d;
+        if (a < 0 || b < 0 || b >= S.rows.length) return;
+        S.rows[a] = S.rows[b]; S.rows[b] = key; changed('rows'); row += d; render();
+    }
+    function width(r) { return r ? (r.pills ? r.pills.length : r.move ? 2 : 1) : 1; }
     function key(c) {
         if (Picker.isOpen()) return Picker.key(c);
         if (ChannelPicker.isOpen()) return ChannelPicker.key(c);
         if (SubsForm.isOpen()) return SubsForm.key(c);
-        if (moving) {                                   // reorder mode: Up/Down carry the item, OK drops it
-            if (c === 38) move(-1);
-            else if (c === 40) move(1);
-            else if (c === 13) { moving = false; draw(); }
+        var rows = rowsNow;
+        if (col === 0) {
+            if (c === 38) { if (sec > 0) { sec--; page = null; row = 0; pi = 0; render(); } else return 'up'; }
+            else if (c === 40) { if (sec < SECTIONS.length - 1) { sec++; page = null; row = 0; pi = 0; render(); } }
+            else if (c === 39 || c === 13) { col = 1; row = firstRow(rows); pi = rows[row] && rows[row].move ? 1 : 0; navFocus(); refocus(row); }
             return true;
         }
-        var n = items(sec).length, it = items(sec)[item];
+        if (moving) {
+            if (c === 38) moveBy(-1); else if (c === 40) moveBy(1); else if (c === 13 || c === 37) { moving = false; refocus(row); }
+            return true;
+        }
+        var prev = row, r = rows[row];
         if (c === 38) {
-            if (item > 0) go(sec, item - 1);
-            else if (sec > 0) go(sec - 1, items(sec - 1).length - 1);
-            else return 'up';
+            var i = row - 1; while (i >= 0 && !focusable(rows[i])) i--;
+            if (i >= 0) { row = i; pi = startPi(rows[row]); refocus(prev); } else return 'up';
         } else if (c === 40) {
-            if (item < n - 1) go(sec, item + 1);
-            else if (sec < SECTIONS.length - 1) go(sec + 1, 0);
-        } else if (c === 37) { if (act > 0) { act--; draw(); } }
-        else if (c === 39) { if (act < width(it) - 1) { act++; draw(); } }
-        else if (c === 13) toggle();
+            var j = row + 1; while (j < rows.length && !focusable(rows[j])) j++;
+            if (j < rows.length) { row = j; pi = startPi(rows[row]); refocus(prev); }
+        } else if (c === 37) {
+            if (pi > 0) { pi--; refocus(row); }
+            else { col = 0; navFocus(); refocus(row); }
+        } else if (c === 39) { if (pi < width(r) - 1) { pi++; refocus(row); } }
+        else if (c === 13) ok();
         return true;
     }
-    function back() { if (Picker.isOpen()) { Picker.close(); return true; } if (ChannelPicker.isOpen()) { ChannelPicker.close(); return true; } if (SubsForm.isOpen()) { SubsForm.close(); return true; } if (moving) { moving = false; draw(); return true; } if (editing) { editing = false; draw(); return true; } return false; }
-    function longPress() {
-        var s = SECTIONS[sec].id;
-        if (!active || (s !== 'tabs' && s !== 'rows') || item === 0) return false;
-        editing = true; moving = true; draw(); return true;
+    function startPi(r) { if (!r) return 0; if (r.move) return 1; if (r.pills) { for (var i = 0; i < r.pills.length; i++) if (r.pills[i][2]) return r.multi ? 0 : i; } return 0; }
+    function back() {
+        if (Picker.isOpen()) { Picker.close(); return true; } if (ChannelPicker.isOpen()) { ChannelPicker.close(); return true; } if (SubsForm.isOpen()) { SubsForm.close(); return true; }
+        if (moving) { moving = false; refocus(row); return true; }
+        if (page) { closePage(); return true; }
+        if (col === 1) { col = 0; navFocus(); refocus(row); return true; }
+        return false;
     }
+    function longPress() { var r = rowsNow[row]; if (!active || col !== 1 || !r || !r.move) return false; pi = 0; moving = true; refocus(row); return true; }
     function init() {
-        sections();
         el = U.$('settings');
-        el.innerHTML = '<div class="abs" id="stItems" style="left:0;top:0;width:1920px;height:1080px"></div>' +
-            '<div class="abs" id="stTop" style="left:0;top:0;width:1920px;height:226px;opacity:0;z-index:5;-webkit-transform:translateZ(0);transform:translateZ(0);' +
-            'background:-webkit-linear-gradient(top,#000 82%,rgba(0,0,0,0));background:linear-gradient(180deg,#000 82%,rgba(0,0,0,0))"></div>' +
-            '<div class="rowtitle" style="left:' + X0 + 'px;top:166px;z-index:6">Settings</div>' +
+        el.innerHTML = '<div class="stcrumb" id="stCrumb"></div>' +
+            '<div class="abs" id="stNav" style="left:' + X_NAV + 'px;top:' + TOP + 'px;width:470px;height:800px"></div>' +
+            '<div class="abs" id="stClip" style="left:' + (X_PANE - 20) + 'px;top:' + (TOP - 20) + 'px;width:' + (W_PANE + 40) + 'px;height:' + (BOTTOM - TOP + 40) + 'px;overflow:hidden">' +
+            '<div class="abs t" id="stPane" style="left:20px;top:20px;width:' + W_PANE + 'px;height:10px"></div></div>' +
             '<div class="overlay" id="stOver"></div>';
     }
     return {
         init: init, key: key, back: back, longPress: longPress,
-        show: function () { sections(); draw(); },
-        focus: function () { active = true; draw(); },
-        blur: function () { active = false; draw(); },
-        refresh: function () { draw(); },
+        show: function () { loadCounts(); loadRegions(); render(); },
+        focus: function () { active = true; render(); },
+        blur: function () { active = false; if (built) { navFocus(); refocus(row); } },
+        refresh: function () { render(); },
         get: function () { return S; },
         addList: function (t, id, name) {
             var key = 'list:' + t + ':' + id;
@@ -259,7 +403,7 @@ var Settings = (function () {
             S.rows.splice(1, 0, key);          // right after Continue watching
             changed('rows'); U.toast('Added to Home: ' + name);
         },
-        redraw: function () { draw(); },
+        redraw: function () { if (built) render(); },
         removeList: function (key) { S.lists = S.lists.filter(function (l) { return l.key !== key; }); S.rows = S.rows.filter(function (r) { return r !== key; }); changed('rows'); U.toast('List removed from Home'); },
         saveTileOrder: function (rowKey, ids) { S.tileOrder[rowKey] = ids; save(); },
         hideRow: function (key) { if (S.hideRows.indexOf(key) < 0) S.hideRows.push(key); changed('rows'); U.toast('Row hidden · Settings > Home rows shows it again'); },
@@ -457,7 +601,10 @@ var ChannelPicker = (function () {
         ensure(); draw(); return true;
     }
     return {
-        open: function () { open = true; zone = 0; draw(); load(function () { ensure(); if (open) draw(); }); },
+        // cc (optional): open on that country ('uk' is the provider's UK)
+        open: function (cc) { open = true; zone = 0; draw(); load(function () {
+            if (cc) for (var i = 0; i < countries.length; i++) if (countries[i].code === cc.toUpperCase()) { ci = i; gi = 0; ch = 0; gTop = 0; hTop = 0; zone = 1; }
+            ensure(); if (open) draw(); }); },
         close: function () { open = false; U.$('stOver').className = 'overlay'; U.$('stOver').innerHTML = ''; Settings.redraw(); },
         isOpen: function () { return open; }, key: key
     };

@@ -73,7 +73,7 @@ final class Build4Tests: XCTestCase {
         app.launchArguments = ["-NXTab", "settings", "-NXResetLayout", "YES"]
         app.launch(); idle(12)
         press(.down, wait: 1)
-        XCTAssertTrue(focusContains("Menu tabs", .up), "Settings sidebar")
+        XCTAssertTrue(focusContains("Account & sources", .up), "Settings sidebar")
         XCTAssertTrue(focusContains("Lists", .down), "Lists section")
         press(.right, wait: 1)
         XCTAssertTrue(focusContains("Browse all lists", .up), "browse button")
@@ -95,9 +95,9 @@ final class Build4Tests: XCTestCase {
         press(.select, wait: 2)                                // back as it was
         press(.menu, wait: 2)
         press(.left, wait: 1)
-        XCTAssertTrue(focusContains("Channels", .down), "Channels section")
+        XCTAssertTrue(focusContains("Channels", .up), "Channels section")   // Channels sits above Lists in the new sidebar
         press(.right, wait: 1)
-        XCTAssertTrue(focusContains("Browse all channels", .up), "browse channels")
+        XCTAssertTrue(focusContains("Browse all channels", .down, max: 20), "browse channels")   // last row of the Channels pane
         press(.select, wait: 6)
         press(.down, 6, wait: 1)                               // a country down the list (not one of the four chosen)
         let country = focusedLabel

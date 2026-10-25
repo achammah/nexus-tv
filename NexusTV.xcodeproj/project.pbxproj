@@ -71,6 +71,7 @@
 		75AF543A4A33BA3343236A2F /* channel-logos.json in Resources */ = {isa = PBXBuildFile; fileRef = F2C7DE8390A109C782AE738F /* channel-logos.json */; };
 		773E14020ADE08D7CAAE6F8E /* MacJourneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FFCEE63891ED4914234AA78 /* MacJourneyTests.swift */; };
 		776DA8AAD62BDC1C2194310D /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A15D220CFE6522EB4B0A916 /* Stores.swift */; };
+		7977873C4FD80144DA2BCF82 /* SettingsParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 727CEFF14DC2D8F3AAE7BFCC /* SettingsParts.swift */; };
 		7A2D55917EBB744A9F2929BB /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1621D5F972C79A7979BCADA /* ImageLoader.swift */; };
 		7BF8D78BB59F1B58ACD7327B /* PinnedBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A229F4073E04943B09B290D5 /* PinnedBanner.swift */; };
 		7F6E96D1E0D34DAB18FF3CFF /* MacPlayerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0506C76B85A12E566009437 /* MacPlayerModel.swift */; };
@@ -88,6 +89,7 @@
 		9B57A22D662FFD1377ADFE75 /* OpeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9D0616FB4DABE59D8FEDB52 /* OpeningTests.swift */; };
 		9B63618B41FBD9BD22145416 /* TVVLCKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 66529BBEBF69F183711D44D4 /* TVVLCKit.xcframework */; };
 		9CC367FC8EA1E478D5348335 /* SearchFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EC23D7CA595B19F9FC97BB8 /* SearchFocusTests.swift */; };
+		9E06BFC3771815A0223A4538 /* SettingsPanes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E232B4A8780EBC9111D1CD55 /* SettingsPanes.swift */; };
 		9ED5138639CC0D4FA26AE6BA /* OnboardingGroupPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5450E1AF99FFF9A692ACCE8E /* OnboardingGroupPicker.swift */; };
 		9EFAC8A80A68029FFC58C301 /* BrowseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 403D5C44E01BA1894202C247 /* BrowseTests.swift */; };
 		A1C750DDA8CDBC3DF38FDD9A /* M3USource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8472A1EDD3578B374A09A697 /* M3USource.swift */; };
@@ -97,6 +99,7 @@
 		AB06CEE714728E519774B811 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4F1F5E4BB6A2C8E15C0860 /* LibraryView.swift */; };
 		AF175CB903CB9113E9FF39EE /* LibrarySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E74462F10F968485225318 /* LibrarySource.swift */; };
 		AFC3BA31336B7CBE97C2F028 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9BD4849AB6BC17C899AA3D5 /* Account.swift */; };
+		B450BEEEC45F87B035B6BB46 /* SettingsPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2A2CA3BFDEEC4113B61BC5 /* SettingsPickers.swift */; };
 		B4BF5A2C72CA78D9048FAD82 /* Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C459CF78E2087A4B59356277 /* Metrics.swift */; };
 		B699E8314DA67AB5DDA4CC09 /* empty.m3u in Resources */ = {isa = PBXBuildFile; fileRef = 023DB8A16D63241ACA339D56 /* empty.m3u */; };
 		B72F9328D7DF819F02F37D34 /* portal-replies.json in Resources */ = {isa = PBXBuildFile; fileRef = 56D0F412DAAAD3F0659CACD3 /* portal-replies.json */; };
@@ -222,6 +225,7 @@
 		6EC23D7CA595B19F9FC97BB8 /* SearchFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFocusTests.swift; sourceTree = "<group>"; };
 		7172F89E57568EA155F92589 /* SourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceTests.swift; sourceTree = "<group>"; };
 		7219C158D9FC92E10867853A /* NexusTVMacUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NexusTVMacUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		727CEFF14DC2D8F3AAE7BFCC /* SettingsParts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsParts.swift; sourceTree = "<group>"; };
 		79483C733B79CB5AE2EB5AB5 /* circle-flags.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "circle-flags.txt"; sourceTree = "<group>"; };
 		794A811401A6DCE01AC24E18 /* VLCController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLCController.swift; sourceTree = "<group>"; };
 		7A7DBAB90D5C69DBEE0E3DD6 /* PortalSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalSource.swift; sourceTree = "<group>"; };
@@ -263,6 +267,7 @@
 		D7B419C3681784BCB805B94B /* BrowseViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseViews.swift; sourceTree = "<group>"; };
 		D9BD4849AB6BC17C899AA3D5 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		D9D0616FB4DABE59D8FEDB52 /* OpeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpeningTests.swift; sourceTree = "<group>"; };
+		E232B4A8780EBC9111D1CD55 /* SettingsPanes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPanes.swift; sourceTree = "<group>"; };
 		E325A404C4999C744D7CDBDB /* CountryNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryNames.swift; sourceTree = "<group>"; };
 		E4AF6E426406A8D487FF0D2A /* BannerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BannerCard.swift; sourceTree = "<group>"; };
 		E8F3FA5C1118C19B62C75C05 /* OpeningView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpeningView.swift; sourceTree = "<group>"; };
@@ -274,6 +279,7 @@
 		F2C7DE8390A109C782AE738F /* channel-logos.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "channel-logos.json"; sourceTree = "<group>"; };
 		FA219B4779E2E50C3CADBE52 /* InWindowPlayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InWindowPlayerTests.swift; sourceTree = "<group>"; };
 		FDD51835F7193300257F4687 /* Build4Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Build4Tests.swift; sourceTree = "<group>"; };
+		FE2A2CA3BFDEEC4113B61BC5 /* SettingsPickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPickers.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -399,6 +405,7 @@
 				3AB7A9237026BF2475B275DD /* RootView.swift */,
 				8D4AEA4267A3DA3F816F13F1 /* SearchView.swift */,
 				C3699F2233A6869C93C67455 /* SettingsView.swift */,
+				62554DECE83898BFD996A815 /* Settings */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -417,6 +424,16 @@
 				1FFCEE63891ED4914234AA78 /* MacJourneyTests.swift */,
 			);
 			path = macOSUITests;
+			sourceTree = "<group>";
+		};
+		62554DECE83898BFD996A815 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				E232B4A8780EBC9111D1CD55 /* SettingsPanes.swift */,
+				727CEFF14DC2D8F3AAE7BFCC /* SettingsParts.swift */,
+				FE2A2CA3BFDEEC4113B61BC5 /* SettingsPickers.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		649302B81357BD4E9549806E /* Products */ = {
@@ -838,6 +855,9 @@
 				15D24B84528369C6D11A2E90 /* RootView.swift in Sources */,
 				EA86698FFA532003DDF5BA71 /* SearchEngine.swift in Sources */,
 				1694A715115192169A3DB0A8 /* SearchView.swift in Sources */,
+				9E06BFC3771815A0223A4538 /* SettingsPanes.swift in Sources */,
+				7977873C4FD80144DA2BCF82 /* SettingsParts.swift in Sources */,
+				B450BEEEC45F87B035B6BB46 /* SettingsPickers.swift in Sources */,
 				36DAC3FFDC743C9D29450FAC /* SettingsView.swift in Sources */,
 				1BB00062A090DFD4A6F5304B /* SourceChecker.swift in Sources */,
 				94BD26F78B8DE9686B739C4D /* SourceType.swift in Sources */,
@@ -972,7 +992,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1189,7 +1209,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
