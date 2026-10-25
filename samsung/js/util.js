@@ -370,6 +370,65 @@ var U = (function () {
         save('nx_resume', resume); toast('Removed from Continue watching');
     }
 
+    // ---- last device wins: one stream per account, the newest app takes it (ntfy.sh signal) ----
+    function sha256hex(msg) {
+        var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+        var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+        var b = unescape(encodeURIComponent(msg)), n = b.length, w = [], i, j;
+        for (i = 0; i < n; i++) w[i >> 2] |= b.charCodeAt(i) << (24 - (i % 4) * 8);
+        w[n >> 2] |= 0x80 << (24 - (n % 4) * 8);
+        var len = (((n + 8) >> 6) + 1) * 16; w[len - 1] = n * 8;
+        for (i = 0; i < len; i++) if (!w[i]) w[i] = 0;
+        function rr(x, c) { return (x >>> c) | (x << (32 - c)); }
+        for (i = 0; i < len; i += 16) {
+            var W = w.slice(i, i + 16), a = H[0], bb = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+            for (j = 16; j < 64; j++) {
+                var s0 = rr(W[j - 15], 7) ^ rr(W[j - 15], 18) ^ (W[j - 15] >>> 3), s1 = rr(W[j - 2], 17) ^ rr(W[j - 2], 19) ^ (W[j - 2] >>> 10);
+                W[j] = (W[j - 16] + s0 + W[j - 7] + s1) | 0;
+            }
+            for (j = 0; j < 64; j++) {
+                var S1 = rr(e, 6) ^ rr(e, 11) ^ rr(e, 25), ch = (e & f) ^ (~e & g), t1 = (h + S1 + ch + K[j] + W[j]) | 0;
+                var S0 = rr(a, 2) ^ rr(a, 13) ^ rr(a, 22), mj = (a & bb) ^ (a & c) ^ (bb & c), t2 = (S0 + mj) | 0;
+                h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+            }
+            H[0] = (H[0] + a) | 0; H[1] = (H[1] + bb) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0; H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+        }
+        var out = ''; for (i = 0; i < 8; i++) out += ('00000000' + (H[i] >>> 0).toString(16)).slice(-8);
+        return out;
+    }
+    // one random id per install; the topic is a secret derived from the active source: never logged, never shown
+    var devId = (function () { try { var d = localStorage.getItem('nx_dev'); if (!d) { d = ''; for (var i = 0; i < 16; i++) d += Math.floor(Math.random() * 16).toString(16); localStorage.setItem('nx_dev', d); } return d; } catch (e) { return 'x' + Date.now(); } })();
+    function topic() { return 'nxtv-' + sha256hex((IP.base || '') + '|' + (IP.user || '') + '|' + (IP.pass || '')).slice(0, 24); }
+    var NTFY = 'https://ntfy.sh/';
+    var takeover = {
+        dev: devId, name: 'Frame TV',
+        claim: function (kind, t) {
+            try {
+                var x = new XMLHttpRequest(); x.open('POST', NTFY + topic(), true);
+                x.onerror = function () { diagLog({ ev: 'takeover.err', why: 'publish' }); };
+                x.onload = function () { if (x.status < 200 || x.status >= 300) diagLog({ ev: 'takeover.err', why: 'publish ' + x.status }); };
+                x.send(JSON.stringify({ v: 1, dev: devId, name: 'Frame TV', kind: kind, t: t }));
+            } catch (e) { diagLog({ ev: 'takeover.err', why: 'publish' }); }
+        },
+        // cb(msgs, lastId): the messages since `since` (an id, or '30s'), oldest first
+        poll: function (since, cb) {
+            try {
+                var x = new XMLHttpRequest(); x.open('GET', NTFY + topic() + '/json?poll=1&since=' + encodeURIComponent(since), true);
+                x.timeout = 8000;
+                x.onload = function () {
+                    if (x.status < 200 || x.status >= 300) { diagLog({ ev: 'takeover.err', why: 'poll ' + x.status }); cb([], since); return; }
+                    var lines = String(x.responseText || '').split('\n'), out = [], last = since;
+                    for (var i = 0; i < lines.length; i++) {
+                        if (!lines[i]) continue;
+                        try { var ev = JSON.parse(lines[i]); if (ev.id) last = ev.id; if (ev.event === 'message') { var m = JSON.parse(ev.message); if (m && m.v === 1) out.push(m); } } catch (e) { /* not ours */ }
+                    }
+                    cb(out, last);
+                };
+                x.onerror = x.ontimeout = function () { diagLog({ ev: 'takeover.err', why: 'poll' }); cb([], since); };
+                x.send();
+            } catch (e) { diagLog({ ev: 'takeover.err', why: 'poll' }); cb([], since); }
+        }
+    };
     var toastT;
     function toast(msg) {
         var el = $('toast'); el.firstChild.textContent = msg; el.className = 'show';
@@ -401,6 +460,6 @@ var U = (function () {
 
     return { $: $, esc: esc, setT: setT, clamp: clamp, getJSON: getJSON, api: api, liveUrl: liveUrl, filmUrl: filmUrl, epUrl: epUrl,
         img: img, imgTag: imgTag, logoFor: logoFor, repairFavLogos: repairFavLogos, wordmark: wordmark, cleanName: cleanName, initials: initials, inList: inList, toggleList: toggleList, myList: function () { return myList; },
-        setResume: setResume, getResume: getResume, setResumeArt: setResumeArt, continueList: continueList, removeResume: removeResume, toast: toast, clock: clock, fmtTime: fmtTime, log: diagLog, titleCase: titleCase, cleanTitle: cleanTitle, clearList: clearList, skelRow: skelRow, accounts: accounts, normBase: normBase, getText: getText, checkLogin: checkLogin, followed: followed, isFollowed: isFollowed, diffSeen: diffSeen, recordSeen: recordSeen, clearUpdate: clearUpdate, updatesCache: updatesCache, saveUpdates: saveUpdates, updatesList: updatesList, epCleanTitle: epCleanTitle, hasSubs: hasSubs, learnSubs: learnSubs, isWatched: isWatched, markWatched: markWatched, creditsAdd: creditsAdd, creditsMem: creditsMem, ccBadge: ccBadge, getTrackPref: getTrackPref, setTrackPref: setTrackPref,
+        setResume: setResume, getResume: getResume, setResumeArt: setResumeArt, continueList: continueList, removeResume: removeResume, toast: toast, clock: clock, fmtTime: fmtTime, log: diagLog, titleCase: titleCase, cleanTitle: cleanTitle, clearList: clearList, skelRow: skelRow, accounts: accounts, normBase: normBase, getText: getText, checkLogin: checkLogin, followed: followed, isFollowed: isFollowed, diffSeen: diffSeen, recordSeen: recordSeen, clearUpdate: clearUpdate, updatesCache: updatesCache, saveUpdates: saveUpdates, updatesList: updatesList, epCleanTitle: epCleanTitle, takeover: takeover, hasSubs: hasSubs, learnSubs: learnSubs, isWatched: isWatched, markWatched: markWatched, creditsAdd: creditsAdd, creditsMem: creditsMem, ccBadge: ccBadge, getTrackPref: getTrackPref, setTrackPref: setTrackPref,
         isFav: isFav, toggleFav: toggleFav, favs: function () { return favs; } };
 })();

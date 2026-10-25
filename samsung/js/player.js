@@ -467,7 +467,7 @@ var Player = (function () {
     }
 
     // ---------- reconnect ----------
-    var stallT = null, retryT = null;
+    var stallT = null, retryT = null, bufT0 = 0;   // a live freeze waits 15 s for the player to recover before a reconnect (the reconnect itself costs about 15 s)
     // The account allows a set number of streams (often one). A refused stream with the account full shows
     // "in use on another device" and tries again every 5 s for 2 min, so the device used last gets the slot
     // as soon as the other one lets go.
@@ -476,7 +476,7 @@ var Player = (function () {
         var L = el.querySelector('.load');
         busyN++;
         if (busyN > 24) { busyN = 0; hideLoad(); U.toast('Still in use on another device. Try again later.'); return; }
-        try { showLoad(item); tuneText('Your account is in use on another device. Nexus TV starts as soon as it is free'); } catch (e) { /* no panel */ }
+        try { showLoad(item); tuneText(Date.now() - (item.claimT || 0) < 15000 ? 'Taking over from the other device\u2026' : 'Your account is in use on another device. Nexus TV starts as soon as it is free'); } catch (e) { /* no panel */ }
         U.log({ ev: 'account.busy', n: busyN });
         busyT = setTimeout(function () { if (cur === item) { item.tries = 0; start(item); } }, 5000);
     }
@@ -561,6 +561,8 @@ var Player = (function () {
             if (sess.chainOk !== null) { item.prevOk = sess.chainOk; item.autoplayed = sess.chainAuto; if (sess.chainAuto) sess.autoplays++; else sess.autoplays = 0; sess.chainOk = null; }
             else if (!item.tries) { sess.autoplays = 0; sess.lastKey = Date.now(); }
         }
+        // last device wins: a stream the user starts claims the account first (a reconnect after a stall keeps its claim)
+        if (!item.claimed && !item.tries) { item.claimed = true; claimNow(item); }
         stopAv();
         upHide(); stillHide(); extOff(); cur = item; ctl = false; btn = 1; closeMenu(); seekAcc = 0; tcache = {}; strip.inside = false; strip.dis = false;
         // while it tunes in, only the loading card shows (its own name, status and bar); the channel bar and the
@@ -582,9 +584,14 @@ var Player = (function () {
                 if (po && po.ref) webapis.avplay.setStreamingProperty('CUSTOM_MESSAGE_HEADER', 'Referer: ' + po.ref);
             } catch (e) { /* not supported on this TV */ }
             webapis.avplay.setDisplayRect(0, 0, 1920, 1080);
+            // a bigger buffer on live: a short network gap is absorbed instead of freezing the picture
+            try {
+                webapis.avplay.setBufferingParam('PLAYER_BUFFER_FOR_PLAY', 'PLAYER_BUFFER_SIZE_IN_SECOND', item.k === 'live' ? 4 : 3);
+                webapis.avplay.setBufferingParam('PLAYER_BUFFER_FOR_RESUME', 'PLAYER_BUFFER_SIZE_IN_SECOND', item.k === 'live' ? 10 : 6);
+            } catch (e) { U.log({ ev: 'buffer.param', err: String(e) }); }
             webapis.avplay.setListener({
-                onbufferingstart: function () { if (!tuning) busy.className = 'spinner busy on'; clearTimeout(stallT); stallT = setTimeout(function () { reconnect('stall'); }, 9000); },
-                onbufferingcomplete: function () { busy.className = 'spinner busy'; hideLoad(); clearTimeout(stallT); if (cur) cur.tries = 0; },
+                onbufferingstart: function () { if (!tuning) busy.className = 'spinner busy on'; bufT0 = Date.now(); clearTimeout(stallT); stallT = setTimeout(function () { reconnect('stall'); }, 15000); },
+                onbufferingcomplete: function () { busy.className = 'spinner busy'; hideLoad(); clearTimeout(stallT); if (bufT0 && !tuning) U.log({ ev: 'buffer', ms: Date.now() - bufT0 }); bufT0 = 0; if (cur) cur.tries = 0; },
                 onbufferingprogress: function (pct) { loadPct(pct); },
                 onstreamcompleted: function () {
                     U.log({ ev: 'ended' });
@@ -598,7 +605,7 @@ var Player = (function () {
                     if (cur && cur.subsOn) subEl.innerHTML = U.esc(String(text || '')).replace(/\n/g, '<br>');
                     else if (cur && cur.ext && cur.ext.ref) refCue(String(text || ''));
                 },
-                onerror: function (e) { U.log({ ev: 'avplay.error', err: String(e) }); reconnect('error'); }
+                onerror: function (e) { U.log({ ev: 'avplay.error', err: String(e) }); if (/NOT_SUPPORTED/.test(String(e))) { hideLoad(); busy.className = 'spinner busy'; U.toast('This channel does not play on this TV.'); return; } reconnect('error'); }
             });
             webapis.avplay.prepareAsync(function () {
                 if (item.pos) { try { webapis.avplay.seekTo(item.pos); } catch (e) { /* live has no seek */ } }
@@ -632,6 +639,7 @@ var Player = (function () {
         if (cur.done && cur.dur) cur.pos = cur.dur;   // played past its credits: it is watched, not a resume point
         if (vod() && cur.resumeItem) U.setResume(cur.resumeItem, cur.pos || 0, cur.dur || 0);
         upHide(); stillHide(); clearInterval(tick); clearTimeout(stallT); clearTimeout(retryT); stopAv();
+        lostHide(); pollStop(); if (!silent && !cur.lost && cur.claimed) U.takeover.claim('stop', Date.now());
         document.documentElement.className = '';
         extOff(); cur = null; setInfo(false); subEl.textContent = ''; hideLoad();
         if (!silent) sess.chainOk = null;
@@ -704,14 +712,14 @@ var Player = (function () {
     function release(why) {
         if (!cur || cur.released) return;
         try { if (vod()) cur.pos = webapis.avplay.getCurrentTime(); } catch (e) { /* keep the last position */ }
-        clearTimeout(stallT); clearTimeout(retryT); clearTimeout(busyT);
+        clearTimeout(stallT); clearTimeout(retryT); clearTimeout(busyT); pollStop();
         try { stopAv(); } catch (e) { /* closed */ }
         cur.released = true; U.log({ ev: 'stream.released', why: why });
     }
     function reopen() {
         if (!cur || !cur.released) return;
         var again = {}; for (var k in cur) again[k] = cur[k];
-        again.released = false; again.tries = 0; again.stillAsked = true; if (cur.src) again.url = cur.src;
+        again.released = false; again.claimed = false; again.lost = false; again.tries = 0; again.stillAsked = true; if (cur.src) again.url = cur.src;
         start(again);
     }
     function togglePause() {
@@ -775,6 +783,7 @@ var Player = (function () {
     // Returns true when the key was used.
     function key(c) {
         if (!cur) return false;
+        if (lostEl && lostEl.className.indexOf('show') > 0) return lostKey(c);
         sess.lastKey = Date.now(); sess.autoplays = 0; cur.lastInter = cur.pos || 0;
         if (stillShown()) return stillKey(c);
         if (cardOn() && !ctl) {
@@ -976,10 +985,54 @@ var Player = (function () {
         }
         return true;
     }
+    // ---------- last device wins (takeover) ----------
+    // Claim when a stream the user starts opens; poll ntfy.sh every 3 s only while this app holds a stream; a newer claim from
+    // another device releases the stream and shows the card. A failed publish or poll never blocks playback.
+    var lostEl = null, pollT = null, pollSince = '30s', pollBusy = false, lostBtn = 0, myClaim = 0;
+    function claimNow(item) {
+        myClaim = Date.now(); item.claimT = myClaim; pollSince = '30s';
+        U.takeover.claim('play', myClaim); U.log({ ev: 'takeover.claim' });
+        pollStop(); pollT = setInterval(pollOnce, 3000);
+    }
+    function pollStop() { clearInterval(pollT); pollT = null; }
+    function pollOnce() {
+        if (!cur || cur.released || pollBusy || !pollT) return;
+        pollBusy = true; var it = cur;
+        U.takeover.poll(pollSince, function (msgs, last) {
+            pollBusy = false; pollSince = last;
+            if (cur !== it || it.released) return;
+            for (var i = 0; i < msgs.length; i++) {
+                var m = msgs[i];
+                if (m.kind === 'play' && m.dev !== U.takeover.dev && m.t > myClaim) { lose(m.name || 'another device'); return; }
+            }
+        });
+    }
+    function lose(by) {
+        U.log({ ev: 'takeover.lost', by: by });
+        cur.lost = true; release('takeover'); hideLoad();
+        busy.className = 'spinner busy'; lostBtn = 0; lostDraw(by);
+    }
+    function lostDraw(by) {
+        if (by) lostEl.setAttribute('data-by', by); else by = lostEl.getAttribute('data-by');
+        lostEl.innerHTML = '<div class="lt">Playing on ' + U.esc(by) + '</div><div class="lx">Your account allows one stream. Press OK to watch here instead.</div>' +
+            '<div class="lb2"><span class="' + (lostBtn === 0 ? 'on' : '') + '">Watch here</span><span class="' + (lostBtn === 1 ? 'on' : '') + '">Back</span></div>';
+        lostEl.className = 'lostcard show';
+    }
+    function lostHide() { if (lostEl) { lostEl.className = 'lostcard'; lostEl.innerHTML = ''; } }
+    function lostKey(c) {
+        if (c === 37 || c === 39) { lostBtn = c === 37 ? 0 : 1; lostDraw(); }
+        else if (c === 10009 || c === 8) { lostHide(); exit(); }
+        else if (c === 13) {
+            if (lostBtn === 1) { lostHide(); exit(); return true; }
+            lostHide(); U.log({ ev: 'takeover.retake' }); reopen();
+        }
+        return true;
+    }
     function init(exitCb) {
         el = U.$('player'); info = el.querySelector('.info'); busy = el.querySelector('.busy'); onExit = exitCb;
         subEl = U.$('subs'); panel = U.$('tpanel');
         upEl = document.createElement('div'); upEl.className = 'upnext'; el.appendChild(upEl);
+        lostEl = document.createElement('div'); lostEl.className = 'lostcard'; el.appendChild(lostEl);
         stillEl = document.createElement('div'); stillEl.className = 'still'; el.appendChild(stillEl);
         stripEl = document.createElement('div'); stripEl.className = 'estrip'; info.appendChild(stripEl);
         document.addEventListener('visibilitychange', function () {
