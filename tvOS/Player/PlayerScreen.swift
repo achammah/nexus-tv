@@ -55,6 +55,8 @@ struct PlayerScreen: View {
     @State private var attempts = 0
     @State private var reconnecting = false
     @State private var busy = false             // the account's only stream is used by another device
+    @State private var busyTaking = false       // the first 15 s of it: the other app is letting go
+    @FocusState private var lostFocus: Int?
     @State private var retryPending = false    // a reopen is scheduled: further trouble waits for it
     @State private var backgrounded = false
     @Environment(\.scenePhase) private var phase
@@ -103,15 +105,15 @@ struct PlayerScreen: View {
                 Color.black
                 VLCVideoView(controller: vlc)
             }
-            .focusable(!controls && picker == nil && !endCard && stillLeft == 0)
+            .focusable(!controls && picker == nil && !endCard && stillLeft == 0 && vlc.lostTo == nil)
             .focused($rootFocus)
             .onMoveCommand { d in move(d) }
             .onTapGesture { select() }
             if !vlc.started && !vlc.failed && !reconnecting { loadingCard }
             if busy {
                 VStack(spacing: 10) {
-                    HStack(spacing: 14) { Spinner().scaleEffect(0.6).frame(width: 30, height: 30); Text("Your account is in use on another device").font(.ui(30, .semibold)) }
-                    Text("Nexus TV starts as soon as it is free").font(.ui(24)).foregroundStyle(.white.opacity(0.65))
+                    HStack(spacing: 14) { Spinner().scaleEffect(0.6).frame(width: 30, height: 30); Text(busyTaking ? "Taking over from the other device…" : "Your account is in use on another device").font(.ui(30, .semibold)) }
+                    if !busyTaking { Text("Nexus TV starts as soon as it is free").font(.ui(24)).foregroundStyle(.white.opacity(0.65)) }
                 }
                 .padding(.horizontal, 40).padding(.vertical, 26).background(RoundedRectangle(cornerRadius: 24).fill(Color.black.opacity(0.75)))
             } else if reconnecting {
@@ -129,13 +131,14 @@ struct PlayerScreen: View {
             if let picker { trackPanel(picker) }
             if endCard { endCardView }
             if stillLeft > 0 { stillToast }
+            if let by = vlc.lostTo { lostCard(by) }
             if let t = toaster.text {
                 Toast(text: t).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 80).allowsHitTesting(false)
             }
         }
         .ignoresSafeArea()
         .onAppear { rootFocus = true; start() }
-        .onDisappear { saveResume(); vlc.stop(); endTask?.cancel(); stillTask?.cancel() }
+        .onDisappear { saveResume(); vlc.leave(); endTask?.cancel(); stillTask?.cancel() }
         .onExitCommand { back() }
         .onPlayPauseCommand { key(); if !isLive { vlc.toggle(); showInfo() } }
         .onChange(of: vlc.ended) { _, e in if e { finished() } }
@@ -222,6 +225,7 @@ struct PlayerScreen: View {
 
     private func back() {
         key()
+        if vlc.lostTo != nil { close(); return }
         if stillLeft > 0 { answerStill(keep: true); return }
         if endCard { dismissEnd(); return }
         if stripShown || stripFocus != nil { closeStrip(); return }
@@ -898,7 +902,7 @@ struct PlayerScreen: View {
 
     /// The stream stopped: reopen the same URL (live: the live edge; films: the last position), 1, 2, 4, 8, 16 s apart.
     private func troubled() {
-        guard !retryPending, !backgrounded else { return }
+        guard !retryPending, !backgrounded, vlc.lostTo == nil else { return }
         attempts += 1
         Metrics.shared.mark("player.trouble \(attempts)")
         if attempts > 5 { vlc.stop(); vlc.failed = true; reconnecting = false; return }
@@ -912,7 +916,8 @@ struct PlayerScreen: View {
         Task {
             try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
             if await catalog.accountFull() == true {
-                busy = true; attempts = max(0, attempts - 1)
+                busy = true; busyTaking = true; attempts = max(0, attempts - 1)
+                Task { try? await Task.sleep(nanoseconds: 15_000_000_000); busyTaking = false }
                 var free = false
                 for _ in 0..<24 where reconnecting && !backgrounded {
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -942,7 +947,8 @@ struct PlayerScreen: View {
         if onlineFor != request.item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] }
         else { onlineTrack = nil }      // a reopened stream: the remembered choice adds the file again
         vlc.preferredAudio = user.trackPref(request.item)?.audioLang
-        vlc.play(url, startMs: request.startMs, live: isLive)
+        if let a = catalog.account { vlc.configureTakeover(server: a.server, username: a.username, password: a.password) }
+        vlc.play(url, startMs: request.startMs, live: isLive, claim: !again)
         if !isLive { user.setResume(request.item, posMs: request.startMs, durMs: 0) }   // in Continue watching from the start
         lastSave = Date()
         showInfo()
@@ -1196,9 +1202,29 @@ struct PlayerScreen: View {
         .focusSection()
     }
 
+    /// Another app took the stream (last device wins): the player let go; OK watches here again, Back leaves.
+    private func lostCard(_ by: String) -> some View {
+        VStack(spacing: 26) {
+            Text("Playing on \(by)").font(.ui(44, .bold))
+            Text("Your account allows one stream. Press OK to watch here instead.").font(.ui(26)).foregroundStyle(.white.opacity(0.7))
+            HStack(spacing: 20) {
+                Button { Metrics.shared.mark("takeover.retake"); vlc.retake() } label: { Text("Watch here") }
+                    .focused($lostFocus, equals: 0)
+                Button { close() } label: { Text("Back") }
+                    .focused($lostFocus, equals: 1)
+            }
+            .buttonStyle(PillButtonStyle())
+            .focusSection()
+        }
+        .padding(60)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.9))
+        .onAppear { saveResume(); DispatchQueue.main.async { lostFocus = 0 } }
+    }
+
     private func close() {
         saveResume()
-        vlc.stop()
+        vlc.leave()
         dismiss()
     }
 }

@@ -36,8 +36,11 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     /// The preferred audio language for the next open (a language name such as "English"): passed to VLC as
     /// :audio-language so the file starts in it; the player still checks the track once the list is known.
     var preferredAudio: String?
-    func play(_ url: URL, startMs: Int, live: Bool) {
+    /// `claim`: the owner caused this open, so the other apps are told to let go (an automatic reopen after a stall keeps its claim).
+    func play(_ url: URL, startMs: Int, live: Bool, claim: Bool = true) {
+        if !claim && lostTo != nil { return }      // another app has the stream: no automatic reopen
         stop()
+        if claim { takeover.claim() } else { takeover.resumeHolding() }
         // a portal gives a placeholder address: create_link turns it into the real stream just before it opens
         if url.scheme == "nxportal" {
             failed = false; ended = false; started = false; loadPct = 0; timeMs = startMs
@@ -94,6 +97,7 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     }
 
     func stop() {
+        takeover.pause()
         resolving = nil
         poll?.invalidate()
         if player.media != nil { player.stop(); player.media = nil }
@@ -115,6 +119,31 @@ final class VLCController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
             self.release()
         }
     }
+    // Last device wins (Shared/Core/TakeoverChannel.swift)
+    let takeover = TakeoverChannel()
+    /// Name of the app that took the stream; nil while this app holds it.
+    @Published var lostTo: String?
+    /// Sets the account the claims belong to; call before the first play.
+    func configureTakeover(server: String, username: String, password: String) {
+        takeover.topic = TakeoverChannel.topic(server: server, username: username, password: password)
+        takeover.onLost = { [weak self] by in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.release()
+                self.lostTo = by
+            }
+        }
+    }
+    /// "Watch here": claim again and reopen at the same place.
+    func retake() {
+        guard lostTo != nil else { return }
+        lostTo = nil
+        takeover.log("takeover.retake")
+        if released { reopen() } else if let o = lastOpen { play(o.url, startMs: o.live ? 0 : timeMs, live: o.live) }
+    }
+    /// The player closes: the stream stops and the claim is given up.
+    func leave() { stop(); takeover.leave() }
+
     func release() {
         guard player.media != nil, !released else { return }
         releaseTask?.cancel()

@@ -19,6 +19,8 @@ final class MacPlayerModel: ObservableObject {
     @Published var reconnecting = false
     /// The account's only stream is used by another device: waiting for it, checked every 5 s for 2 minutes.
     @Published var busy = false
+    /// The first 15 s of `busy`: the other app is letting go ("Taking over from the other device…").
+    @Published var busyTaking = false
     @Published var attempts = 0
     /// The compact card bottom right once the credits start (rule 4); nil when it is not shown.
     @Published var card: EndCard? = nil
@@ -92,7 +94,8 @@ final class MacPlayerModel: ObservableObject {
         autoSync.stop()      // a new stream: its own reference
         if onlineFor != item.key { online = []; onlineState = ""; onlineActive = nil; onlineTrack = nil; onlineFiles = [:] } else { onlineTrack = nil }
         vlc.preferredAudio = user.trackPref(item)?.audioLang
-        vlc.play(url, startMs: startMs, live: isLive)
+        if let a = catalog.account { vlc.configureTakeover(server: a.server, username: a.username, password: a.password) }
+        vlc.play(url, startMs: startMs, live: isLive, claim: !again)
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "NXMute") { vlc.player.audio?.isMuted = true }     // checks that run while the owner works
         #endif
@@ -113,11 +116,11 @@ final class MacPlayerModel: ObservableObject {
         }
     }
 
-    func stop() { saveResume(); hideCard(); stillTask?.cancel(); vlc.stop() }
+    func stop() { saveResume(); hideCard(); stillTask?.cancel(); vlc.leave() }
 
     /// The stream stopped: reopen it (live: the live edge; films: the last position), 1, 2, 4, 8, 16 s apart.
     func troubled() {
-        guard !retryPending else { return }
+        guard !retryPending, vlc.lostTo == nil else { return }
         attempts += 1
         if attempts > 5 { vlc.stop(); vlc.failed = true; reconnecting = false; return }
         reconnecting = true; retryPending = true
@@ -129,7 +132,8 @@ final class MacPlayerModel: ObservableObject {
         Task {
             try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
             if await catalog.accountFull() == true {
-                busy = true; attempts = max(0, attempts - 1)
+                busy = true; busyTaking = true; attempts = max(0, attempts - 1)
+                Task { try? await Task.sleep(nanoseconds: 15_000_000_000); busyTaking = false }
                 var free = false
                 for _ in 0..<24 where reconnecting {
                     try? await Task.sleep(nanoseconds: 5_000_000_000)

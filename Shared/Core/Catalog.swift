@@ -396,7 +396,8 @@ final class Catalog: ObservableObject {
         let topCat = seriesCats.first { $0.name.trimmingCharacters(in: .whitespaces) == "|EN| TOP SERIES" } ?? seriesCats.first { Clean.tag($0.name) == "EN" }
         if let c: [MediaItem] = await DiskCache.loadOff("home_films.json", maxAge: Self.day / 4),
            let s: [MediaItem] = await DiskCache.loadOff("home_series.json", maxAge: Self.day / 4),
-           let h: [HeroCache] = await DiskCache.loadOff("home_hero.json", maxAge: Self.day / 4) {
+           let h: [HeroCache] = await DiskCache.loadOff("home_hero.json", maxAge: Self.day / 4),
+           !c.isEmpty, !s.isEmpty {   // an empty copy (the provider answered nothing) is never trusted: fetch again
             newFilms = c; topSeries = s; hero = h.map(\.item)
             return
         }
@@ -418,6 +419,8 @@ final class Catalog: ObservableObject {
                      genre: x.genre.components(separatedBy: CharacterSet(charactersIn: "/,")).first?.trimmingCharacters(in: .whitespaces) ?? "",
                      rating: x.rating, plot: x.plot, backdrop: x.backdrops.first ?? "", cover: x.cover)
         }
+        // only a full answer is kept: an empty one (provider busy or offline) would blank Home for six hours
+        guard !newFilms.isEmpty, !topSeries.isEmpty else { return }
         DiskCache.saveOff("home_films.json", newFilms)
         DiskCache.saveOff("home_series.json", topSeries)
         DiskCache.saveOff("home_hero.json", hero.map(HeroCache.init))
@@ -469,7 +472,7 @@ final class Catalog: ObservableObject {
             let ix = SearchIndex(films: films, series: series, languages: langs)
             await setIndex(ix)
             more = moreF + moreS
-            if source.type != .m3u {
+            if source.type != .m3u, !films.isEmpty || !series.isEmpty {   // an empty answer is never kept
                 DiskCache.saveOff("search_index.json", ix)
                 DiskCache.saveOff("search_more.json", moreF + moreS)
             }

@@ -72,6 +72,7 @@ struct MacPlayerView: View {
         case .escape:
             if model.popup != nil { model.popup = nil }
             else if strip { model.closeStrip() }
+            else if model.vlc.lostTo != nil { leave() }
             else if model.still != nil { model.keepWatching() }
             else if model.card != nil { model.dismissCard() }
             else if window.window?.styleMask.contains(.fullScreen) == true { toggleFull() }
@@ -79,6 +80,7 @@ struct MacPlayerView: View {
             else { leave() }
             return .handled
         case .return:
+            if model.vlc.lostTo != nil { model.vlc.retake(); return .handled }
             if strip { model.stripPick(model.stripSel); return .handled }
             if model.card != nil { model.acceptCard(); return .handled }
             if model.still != nil { model.keepWatching(); return .handled }
@@ -132,6 +134,26 @@ struct MacPlayerView: View {
     }
 }
 
+/// Another app took the stream (last device wins): the player let go; Return or a click watches here again, Back leaves.
+private struct LostCard: View {
+    let by: String
+    let watchHere: () -> Void
+    let back: () -> Void
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Playing on \(by)").font(.system(size: 26, weight: .bold))
+            Text("Your account allows one stream. Press Return to watch here instead.").font(.system(size: 14)).foregroundStyle(MacTheme.soft)
+            HStack(spacing: 10) {
+                Button("Watch here", action: watchHere).buttonStyle(MacPill(primary: true)).keyboardShortcut(.defaultAction).accessibilityIdentifier("lost-watch-here")
+                Button("Back", action: back).buttonStyle(MacPill()).accessibilityIdentifier("lost-back")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.92))
+        .accessibilityElement(children: .contain).accessibilityIdentifier("lost-card")
+    }
+}
+
 /// The parts that redraw on every clock tick.
 private struct PlayerBody: View {
     @ObservedObject var model: MacPlayerModel
@@ -149,9 +171,10 @@ private struct PlayerBody: View {
             Color.black
             MacVideoView(controller: vlc)
             if !vlc.started && !vlc.failed && !model.reconnecting { loading }
-            if model.busy { pill("Your account is in use on another device. Nexus TV starts as soon as it is free.", spinner: true) }
+            if model.busy { pill(model.busyTaking ? "Taking over from the other device…" : "Your account is in use on another device. Nexus TV starts as soon as it is free.", spinner: true) }
             else if model.reconnecting { pill("Reconnecting…  \(model.attempts)/5", spinner: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(24) }
             if vlc.failed { pill("This could not be played") }
+            if let by = vlc.lostTo { LostCard(by: by, watchHere: { vlc.retake() }, back: back) }
             if let m = model.message { pill(m).frame(maxHeight: .infinity, alignment: .top).padding(.top, 60) }
             if hudVisible {
                 LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom).frame(height: 60).frame(maxHeight: .infinity, alignment: .top)
