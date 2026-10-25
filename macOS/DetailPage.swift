@@ -9,6 +9,8 @@ struct DetailPage: View {
     @EnvironmentObject var nav: MacNav
     @State private var d: Details?
     @State private var season = ""
+    /// Episodes not seen before this visit carry the "NEW" pill until the page closes (rule 6).
+    @State private var newIds: Set<String> = []
 
     private var title: String { Clean.display(item.name.isEmpty ? (d?.name ?? "") : item.name) }
     private var poster: String { d.map { $0.poster.isEmpty ? item.img : $0.poster } ?? item.img }
@@ -25,6 +27,11 @@ struct DetailPage: View {
             if let d, season.isEmpty {
                 let last = user.lastEpisode(ofSeries: item.id)
                 season = d.seasons.first { s in (d.episodes[s] ?? []).contains { $0.id == last?.item.id } } ?? d.seasons.first ?? ""
+                if item.kind == .series {
+                    newIds = FollowedShows.shared.opened(item, snapshot: FollowedShows.Snapshot(d))
+                    // rule 4: a click on the "New episodes" row or the hero opens the season of the newest new episode
+                    if let h = FollowedShows.shared.takeSeasonHint(item.id), d.seasons.contains(h) { season = h }
+                }
             }
         }
     }
@@ -94,7 +101,13 @@ struct DetailPage: View {
                         }
                         .frame(width: 192, height: 108).clipShape(RoundedRectangle(cornerRadius: 8))
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("\(e.num). " + (e.title.isEmpty ? "Episode \(e.num)" : e.title)).font(.system(size: 14, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("\(e.num). " + (e.title.isEmpty ? "Episode \(e.num)" : e.title)).font(.system(size: 14, weight: .semibold))
+                                if newIds.contains(e.id) {
+                                    Text("NEW").font(.system(size: 10, weight: .bold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Capsule().fill(Color.red)).accessibilityIdentifier("new-pill:\(season):\(e.num)")
+                                }
+                            }
                             if e.durationSecs > 0 { Text("\(e.durationSecs / 60) min").font(.system(size: 12)).foregroundStyle(MacTheme.dim) }
                             if let r, r.fraction > 0.01 { Text(remaining(r)).font(.system(size: 12)).foregroundStyle(MacTheme.dim) }
                         }

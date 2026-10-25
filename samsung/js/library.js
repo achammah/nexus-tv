@@ -198,7 +198,7 @@ var Library = (function () {
 
 var Detail = (function () {
     'use strict';
-    var el, it = null, info = null, row = 0, b = 0, season = 0, ep = 0, seasons = [], eps = {}, req = 0;
+    var el, it = null, info = null, row = 0, b = 0, season = 0, ep = 0, seasons = [], eps = {}, req = 0, newIds = {};
 
     function playFilm() {
         var res = U.getResume({ k: 'film', id: it.id });
@@ -221,6 +221,7 @@ var Detail = (function () {
     function startEp(it, seasons, eps, sIdx, eIdx, moved) {
         var list = eps[seasons[sIdx]] || [], e = list[eIdx]; if (!e) return;
         if (moved) moved(sIdx, eIdx);
+        U.recordSeen(it.id, eps);
         var res = U.getResume({ k: 'ep', id: e.id });
         var label = it.name + ' · S' + seasons[sIdx] + ' E' + (e.episode_num || eIdx + 1);
         var nx = nextOf(seasons, eps, sIdx, eIdx);
@@ -273,7 +274,7 @@ var Detail = (function () {
             for (var e = 0; e < list.length && e < 60; e++) {
                 var E = list[e], still = E.info && E.info.movie_image ? E.info.movie_image : it.img;
                 h += '<div class="ep' + (row === 2 && e === ep ? ' focus' : '') + '" style="left:' + (ex + e * 406 - off) + 'px;top:0"><div class="nm"></div>' + U.imgTag(still, 'w185') +
-                    '<div class="fade"></div><div class="num">' + (E.episode_num || e + 1) + '. ' + U.esc(E.title ? String(E.title).replace(/^.*?-\s*S\d+E\d+\s*-?\s*/i, '') : '') + '</div></div>';
+                    '<div class="fade"></div>' + (newIds[E.id] ? '<div class="newp">NEW</div>' : '') + '<div class="num">' + (E.episode_num || e + 1) + '. ' + U.esc(E.title ? String(E.title).replace(/^.*?-\s*S\d+E\d+\s*-?\s*/i, '') : '') + '</div></div>';
             }
             h += '</div>';
         }
@@ -285,7 +286,7 @@ var Detail = (function () {
         for (var q = 0; q < seasons.length; q++) { var se = U.$('ds' + q); if (se) { se.style.left = px + 'px'; px += se.offsetWidth + 10; } }
     }
     function load(arg) {
-        it = arg; info = null; row = 0; b = 0; season = 0; ep = 0; seasons = []; eps = {};
+        it = arg; info = null; row = 0; b = 0; season = 0; ep = 0; seasons = []; eps = {}; newIds = {};
         var my = ++req;
         U.$('dBack').className = 'back'; U.$('dBack').style.backgroundImage = '';
         draw();
@@ -305,6 +306,13 @@ var Detail = (function () {
                 eps = d.episodes || {};
                 for (var s in eps) seasons.push(s);
                 seasons.sort(function (a, b2) { return (+a) - (+b2); });
+                // episodes not seen before: their NEW pills stay for this visit; the seen set is recorded now, which clears Home's badge
+                var df = U.diffSeen(it.id, eps); for (var nq = 0; nq < df.news.length; nq++) newIds[df.news[nq].id] = 1;
+                U.recordSeen(it.id, eps);
+                if (it.goto) {
+                    var gi = seasons.indexOf(String(it.goto.season));
+                    if (gi >= 0) { season = gi; var gl = eps[seasons[gi]] || []; for (var gj = 0; gj < gl.length; gj++) if (String(gl[gj].id) === String(it.goto.epId)) ep = gj; row = 2; }
+                }
             }
             var back = (inf.backdrop_path && inf.backdrop_path[0]) || inf.cover_big || inf.movie_image || inf.cover || it.img;
             if (back) {
@@ -368,7 +376,18 @@ var Detail = (function () {
     }
     // plays one episode of a series from outside the page (the long-press menu): chained to the next one like any other
     function playEpisode(ser, seasons, eps, sIdx, eIdx) { startEp(ser, seasons, eps, sIdx, eIdx); }
-    return { init: init, key: key, show: load, focus: function () { draw(); }, refresh: function () { draw(); }, playResume: playResume, playEpisode: playEpisode };
+    // the hero's Play on a show with new episodes: the newest new episode
+    function playNewest(u) {
+        U.api({ action: 'get_series_info', series_id: u.id }, function (err, d) {
+            if (err || !d || !d.episodes) { U.toast('Could not load the episodes'); return; }
+            var eps2 = d.episodes, ss = []; for (var s in eps2) ss.push(s); ss.sort(function (a, b2) { return (+a) - (+b2); });
+            var si = ss.indexOf(String(u.newest.season)), ei = 0;
+            if (si < 0) { si = ss.length - 1; }
+            var l2 = eps2[ss[si]] || []; for (var j = 0; j < l2.length; j++) if (String(l2[j].id) === String(u.newest.id)) ei = j;
+            startEp({ id: u.id, name: u.name || u.t, img: u.img, tmdb: String((d.info || {}).tmdb || (d.info || {}).tmdb_id || '').replace(/\D/g, '') }, ss, eps2, si, ei);
+        });
+    }
+    return { init: init, key: key, show: load, focus: function () { draw(); }, refresh: function () { draw(); }, playResume: playResume, playEpisode: playEpisode, playNewest: playNewest };
 })();
 
 // Long press on a series tile (Home rows, Series page, Continue watching, My List): where you are in the show, resume,

@@ -55,7 +55,7 @@ final class UserStore: ObservableObject {
     func inList(_ it: MediaItem) -> Bool { myList.contains { $0.key == it.key } }
     func toggle(_ it: MediaItem) {
         if inList(it) { myList.removeAll { $0.key == it.key }; show("Removed from My List") }
-        else { myList.insert(it, at: 0); show("Added to My List") }
+        else { myList.insert(it, at: 0); show("Added to My List"); if it.kind == .series { FollowedShows.shared.noteFollowed(it) } }
         save()
     }
 
@@ -81,6 +81,10 @@ final class UserStore: ObservableObject {
             resume[it.key] = ResumePoint(item: item, posMs: max(0, posMs), durMs: max(0, durMs), at: Date())
         }
         save()
+        // an episode of a show plays: everything known of the show counts as seen (the "New episodes" row clears)
+        if it.kind == .episode, let sid = it.seriesId {
+            FollowedShows.shared.played(MediaItem(kind: .series, id: sid, name: it.seriesName ?? "", img: it.img))
+        }
     }
     func finished(_ it: MediaItem) { resume[it.key] = nil; markWatched(it); save() }
     func resumePoint(_ it: MediaItem) -> ResumePoint? { resume[it.key] }
@@ -94,6 +98,8 @@ final class UserStore: ObservableObject {
         }
         return out
     }
+    /// Followed shows: every series in My List plus every series with a Continue watching entry, most recently used first, at most 30.
+    var followedSeries: [MediaItem] { EpisodeDiff.followed(myList: myList, resume: Array(resume.values)) }
     func lastEpisode(ofSeries id: String) -> ResumePoint? {
         resume.values.filter { $0.item.kind == .episode && $0.item.seriesId == id }.max { $0.at < $1.at }
     }
@@ -225,11 +231,12 @@ struct Toggled<ID: Codable & Hashable>: Codable, Hashable { var id: ID; var visi
 
 /// Home rows: fixed rows plus one live row per chosen country ("live:BE").
 enum HomeRow {
-    static let fixed = ["continue", "mylist", "favMore", "newFilms", "topSeries"]
+    static let fixed = ["updates", "continue", "mylist", "favMore", "newFilms", "topSeries"]
     /// The rows the Mac Home draws (plus one "live:CC" row per pinned country).
-    static let mac: Set<String> = ["continue", "mylist", "newFilms", "topSeries"]
+    static let mac: Set<String> = ["updates", "continue", "mylist", "newFilms", "topSeries"]
     static func label(_ id: String) -> String {
         switch id {
+        case "updates": return "New episodes"
         case "continue": return "Continue watching"
         case "mylist": return "My List"
         case "favMore": return "More favourites"
@@ -303,9 +310,9 @@ final class Settings: ObservableObject {
         syncRows()
     }
 
-    /// Owner order: Continue watching, My List, Belgium, New films, France, Top series, UK, US.
+    /// Owner order: New episodes, Continue watching, My List, Belgium, New films, France, Top series, UK, US.
     static func defaultRows(_ cc: [String]) -> [Toggled<String>] {
-        var r: [Toggled<String>] = [Toggled(id: "continue", visible: true), Toggled(id: "mylist", visible: true)]
+        var r: [Toggled<String>] = [Toggled(id: "updates", visible: true), Toggled(id: "continue", visible: true), Toggled(id: "mylist", visible: true)]
         let order = ["live:BE", "favMore", "newFilms", "live:FR", "topSeries", "live:UK", "live:US"]
         for id in order where !id.hasPrefix("live:") || cc.contains(String(id.dropFirst(5))) { r.append(Toggled(id: id, visible: true)) }
         for c in cc where !["BE", "FR", "UK", "US"].contains(c) { r.append(Toggled(id: "live:" + c, visible: true)) }
@@ -317,7 +324,9 @@ final class Settings: ObservableObject {
         var rows = homeRows.filter { !$0.id.hasPrefix("live:") || countries.contains(String($0.id.dropFirst(5))) }
         for f in HomeRow.fixed where !rows.contains(where: { $0.id == f }) {
             // "More favourites" (starred channels of countries without a row) goes before New films
-            if f == "favMore", let i = rows.firstIndex(where: { $0.id == "newFilms" }) { rows.insert(Toggled(id: f, visible: true), at: i) }
+            // "New episodes" goes first, above Continue watching
+            if f == "updates" { rows.insert(Toggled(id: f, visible: true), at: 0) }
+            else if f == "favMore", let i = rows.firstIndex(where: { $0.id == "newFilms" }) { rows.insert(Toggled(id: f, visible: true), at: i) }
             else { rows.append(Toggled(id: f, visible: true)) }
         }
         for c in countries where !rows.contains(where: { $0.id == "live:" + c }) { rows.append(Toggled(id: "live:" + c, visible: true)) }
@@ -457,5 +466,289 @@ struct StillWatching: Equatable {
     /// The owner answered the toast. "Keep watching" is a key press; a quick one counts towards the longer wait.
     mutating func answered(keep: Bool, after seconds: TimeInterval, now: Date) {
         if keep { quickKeeps = seconds <= Self.quickAnswer ? quickKeeps + 1 : 0; key(now) } else { quickKeeps = 0 }
+    }
+}
+
+
+// MARK: - New episodes (both apps)
+
+/// One episode of a show as the provider lists it.
+struct EpisodeRef: Codable, Hashable, Sendable {
+    var id: String
+    var season: Int
+    var num: Int
+    var title: String
+    var ext: String = ""
+    var label: String { "S\(season) E\(num)" }
+}
+
+/// What the app has seen of one show: the episode ids and when it was recorded.
+struct SeenRecord: Codable, Equatable {
+    var ids: [String]
+    var at: Date
+}
+
+/// A followed show with episodes the owner has not seen: one tile on the "New episodes" row, one slot in the hero.
+struct NewShow: Codable, Hashable, Identifiable {
+    var series: MediaItem               // kind .series, with its poster
+    var episodes: [EpisodeRef]          // the new ones, newest first
+    var backdrop = ""
+    var plot = ""
+    var facts: [String] = []
+    var id: String { series.id }
+    var newest: EpisodeRef { episodes[0] }
+    var count: Int { episodes.count }
+    /// "2 new"
+    var badge: String { "\(count) new" }
+    /// "S2 E5 · Title"
+    var caption: String { newest.label + (newest.title.isEmpty ? "" : " · " + newest.title) }
+    var kicker: String { "NEW EPISODE · S\(newest.season) E\(newest.num)" }
+}
+
+/// The pure rules of "New episodes": which episodes are new, which shows are followed, what the hero shows. Unit tested.
+enum EpisodeDiff {
+    static let cap = 30
+    static let width = 3
+    static let maxAge: TimeInterval = 3600
+
+    /// Every episode of a show, seasons in order.
+    static func refs(_ d: Details) -> [EpisodeRef] {
+        d.seasons.flatMap { s in (d.episodes[s] ?? []).map { EpisodeRef(id: $0.id, season: Int(s) ?? 0, num: $0.num, title: $0.title, ext: $0.ext) } }
+    }
+
+    /// Newest first: the later season, then the later episode number.
+    static func newestFirst(_ a: EpisodeRef, _ b: EpisodeRef) -> Bool { a.season != b.season ? a.season > b.season : a.num > b.num }
+
+    /// The episodes whose id is not in the seen set, newest first. No seen set (the show was never recorded) = nothing is new.
+    static func newEpisodes(current: [EpisodeRef], seen: Set<String>?) -> [EpisodeRef] {
+        guard let seen else { return [] }
+        return current.filter { !seen.contains($0.id) }.sorted(by: newestFirst)
+    }
+
+    /// The provider gave every episode a new id (none of the seen ones is left): that is a re-index, not new episodes.
+    static func reindexed(current: [EpisodeRef], seen: Set<String>) -> Bool {
+        !seen.isEmpty && current.count > 0 && !current.contains { seen.contains($0.id) }
+    }
+
+    /// The seen ids plus these episodes, in a stable order.
+    static func merged(_ seen: [String], with eps: [EpisodeRef]) -> [String] {
+        var out = seen, have = Set(seen)
+        for e in eps where have.insert(e.id).inserted { out.append(e.id) }
+        return out
+    }
+
+    /// Followed shows = every series in My List plus every series with a Continue watching entry. Most recently used first
+    /// (Continue watching by time, then My List in its order), one entry per show, at most `cap`.
+    static func followed(myList: [MediaItem], resume: [ResumePoint], cap: Int = EpisodeDiff.cap) -> [MediaItem] {
+        var out: [MediaItem] = [], seen = Set<String>()
+        func add(_ it: MediaItem) { if seen.insert(it.id).inserted { out.append(it) } }
+        let listed = Dictionary(myList.filter { $0.kind == .series }.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for r in resume.sorted(by: { $0.at > $1.at }) {
+            guard r.item.kind == .episode, let sid = r.item.seriesId else { continue }
+            add(listed[sid] ?? MediaItem(kind: .series, id: sid, name: r.item.seriesName ?? "", img: r.item.img))
+        }
+        for it in myList where it.kind == .series { add(it) }
+        return Array(out.prefix(cap))
+    }
+
+    /// The episode to play and the ones after it (the same naming the show pages use).
+    static func plan(episodes: [EpisodeRef], play id: String, series: MediaItem, title: String, poster: String) -> (item: MediaItem, next: [MediaItem])? {
+        let all = episodes.sorted { $0.season != $1.season ? $0.season < $1.season : $0.num < $1.num }
+        func make(_ e: EpisodeRef) -> MediaItem {
+            MediaItem(kind: .episode, id: e.id, name: "\(title) · S\(e.season) E\(e.num)", img: poster, ext: e.ext, sub: e.title, seriesId: series.id, seriesName: title)
+        }
+        guard let i = all.firstIndex(where: { $0.id == id }) else { return nil }
+        return (make(all[i]), all.dropFirst(i + 1).map(make))
+    }
+}
+
+/// One hero slot: a followed show with new episodes (`update`), or a top series.
+struct HomeHero: Hashable {
+    var id: String
+    var title: String
+    var facts: [String]
+    var plot: String
+    var backdrop: String
+    var cover: String
+    var update: NewShow? = nil
+    /// "NEW EPISODE · S2 E5", or "Top series"
+    var kicker: String { update?.kicker ?? "Top series" }
+
+    /// Shows with new episodes first (up to 5), then the top series that are not among them.
+    static func list(updates: [NewShow], base: [HeroItem]) -> [HomeHero] {
+        let up = updates.prefix(5).map { n in
+            HomeHero(id: n.id, title: Clean.display(n.series.name), facts: n.facts, plot: n.plot, backdrop: n.backdrop, cover: n.series.img, update: n)
+        }
+        let ids = Set(up.map(\.id))
+        let rest = base.filter { !ids.contains($0.id) }.map { h in
+            HomeHero(id: h.id, title: h.title, facts: [h.year, h.genre, h.rating.isEmpty ? "" : "★ " + String(h.rating.prefix(3))].filter { !$0.isEmpty },
+                     plot: h.plot, backdrop: h.backdrop, cover: h.cover)
+        }
+        return up + rest
+    }
+}
+
+/// The new-episode memory of the followed shows (kept per account): what was seen, and the result of the last refresh.
+@MainActor
+final class FollowedShows: ObservableObject {
+    static let shared = FollowedShows()
+
+    /// What the provider says about one show right now.
+    struct Snapshot: Sendable {
+        var episodes: [EpisodeRef]
+        var poster = "", backdrop = "", plot = ""
+        var facts: [String] = []
+        init(episodes: [EpisodeRef], poster: String = "", backdrop: String = "", plot: String = "", facts: [String] = []) {
+            self.episodes = episodes; self.poster = poster; self.backdrop = backdrop; self.plot = plot; self.facts = facts
+        }
+        init(_ d: Details) { self.init(episodes: EpisodeDiff.refs(d), poster: d.poster, backdrop: d.backdrop, plot: d.plot, facts: d.facts) }
+    }
+    private struct Cache: Codable { var checkedAt: Date?; var shows: [NewShow] }
+
+    /// The shows with new episodes found by the last refresh (a stored copy, so Home draws at once).
+    @Published private(set) var shows: [NewShow] = []
+    private(set) var checkedAt: Date?
+    /// Reads one show from the provider; set by `configure(catalog:)`.
+    var fetch: (@MainActor (MediaItem) async -> Snapshot?)?
+    var now: () -> Date = { Date() }
+    /// Season to open on the next show page of this show (set by a tap on the row or the hero).
+    var seasonHint: [String: String] = [:]
+
+    private let defaults: UserDefaults
+    private let accountId: () -> String
+    private var account = ""
+    private var seen: [String: SeenRecord] = [:]
+    private var refreshing = false
+    private var pending: Set<String> = []
+    private static let maxRecords = 300
+
+    init(defaults: UserDefaults = .standard, accountId: @escaping () -> String = { AccountVault.activeId }) {
+        self.defaults = defaults; self.accountId = accountId
+        reloadIfAccountChanged()
+    }
+
+    /// Reads the shows from the active catalogue (once per catalogue object).
+    func configure(catalog: Catalog) {
+        fetch = { [weak catalog] item in
+            guard let catalog, let d = await catalog.details(MediaItem(kind: .series, id: item.id, name: item.name, img: item.img)) else { return nil }
+            return Snapshot(d)
+        }
+    }
+
+    // MARK: storage
+
+    private var suffix: String { account == "default" ? "" : "@" + account }
+    private func reloadIfAccountChanged() {
+        let id = accountId()
+        guard id != account else { return }
+        account = id
+        if let d = defaults.data(forKey: "nx.seen" + suffix), let v = try? JSONDecoder().decode([String: SeenRecord].self, from: d) { seen = v } else { seen = [:] }
+        if let d = defaults.data(forKey: "nx.updates" + suffix), let c = try? JSONDecoder().decode(Cache.self, from: d) { shows = c.shows; checkedAt = c.checkedAt }
+        else { shows = []; checkedAt = nil }
+    }
+    private func saveSeen() {
+        if seen.count > Self.maxRecords {
+            let keep = seen.sorted { $0.value.at > $1.value.at }.prefix(Self.maxRecords).map(\.key)
+            seen = seen.filter { keep.contains($0.key) }
+        }
+        if let d = try? JSONEncoder().encode(seen) { defaults.set(d, forKey: "nx.seen" + suffix) }
+    }
+    private func saveCache() {
+        if let d = try? JSONEncoder().encode(Cache(checkedAt: checkedAt, shows: shows)) { defaults.set(d, forKey: "nx.updates" + suffix) }
+    }
+
+    // MARK: reading
+
+    func hasRecord(_ seriesId: String) -> Bool { reloadIfAccountChanged(); return seen[seriesId] != nil }
+    func seenIds(_ seriesId: String) -> Set<String>? { reloadIfAccountChanged(); return seen[seriesId].map { Set($0.ids) } }
+    /// The shows with new episodes that are still followed.
+    func visible(followed: [MediaItem]) -> [NewShow] {
+        reloadIfAccountChanged()
+        let ids = Set(followed.map(\.id))
+        return shows.filter { ids.contains($0.id) }
+    }
+    func takeSeasonHint(_ seriesId: String) -> String? { seasonHint.removeValue(forKey: seriesId) }
+
+    // MARK: recording (rule 2)
+
+    /// Records everything the provider lists now as seen; the show leaves the "New episodes" row.
+    func record(_ seriesId: String, episodes: [EpisodeRef]) {
+        reloadIfAccountChanged()
+        guard !episodes.isEmpty else { return }
+        seen[seriesId] = SeenRecord(ids: EpisodeDiff.merged(seen[seriesId]?.ids ?? [], with: episodes), at: now())
+        saveSeen()
+        if shows.contains(where: { $0.id == seriesId }) { shows.removeAll { $0.id == seriesId }; saveCache() }
+    }
+
+    /// A show page opens: the episodes not seen yet (for the "NEW" pills of this visit); the set is recorded now.
+    func opened(_ series: MediaItem, snapshot: Snapshot) -> Set<String> {
+        reloadIfAccountChanged()
+        let cur = snapshot.episodes
+        let fresh: Set<String>
+        if let s = seen[series.id], !EpisodeDiff.reindexed(current: cur, seen: Set(s.ids)) {
+            fresh = Set(EpisodeDiff.newEpisodes(current: cur, seen: Set(s.ids)).map(\.id))
+        } else { fresh = [] }
+        record(series.id, episodes: cur)
+        return fresh
+    }
+
+    /// The show joined My List: record what it has now, so only later episodes count as new.
+    func noteFollowed(_ series: MediaItem) {
+        reloadIfAccountChanged()
+        guard seen[series.id] == nil, pending.insert(series.id).inserted else { return }
+        Task {
+            if let s = await fetch?(series) { record(series.id, episodes: s.episodes) }
+            pending.remove(series.id)
+        }
+    }
+
+    /// An episode of the show plays: the episodes found new by the last refresh count as seen.
+    func played(_ series: MediaItem) {
+        reloadIfAccountChanged()
+        if let n = shows.first(where: { $0.id == series.id }) { record(series.id, episodes: n.episodes) }
+        else if seen[series.id] == nil { noteFollowed(series) }
+    }
+
+    // MARK: refresh (rule 3)
+
+    /// Reads the provider's series info for each followed show (at most 30, 3 at a time) and keeps the shows with new episodes.
+    /// Runs at most once an hour unless `force`.
+    func refresh(followed: [MediaItem], force: Bool = false) async {
+        reloadIfAccountChanged()
+        let list = Array(followed.prefix(EpisodeDiff.cap))
+        guard let fetch, !refreshing else { return }
+        if !force, let at = checkedAt, now().timeIntervalSince(at) < EpisodeDiff.maxAge { return }
+        refreshing = true
+        defer { refreshing = false }
+        var results: [String: Snapshot] = [:]
+        var i = 0
+        while i < list.count {
+            let chunk = list[i..<min(i + EpisodeDiff.width, list.count)]
+            i += EpisodeDiff.width
+            await withTaskGroup(of: (String, Snapshot?).self) { group in
+                for it in chunk { group.addTask { (it.id, await fetch(it)) } }
+                for await (id, snap) in group { if let snap { results[id] = snap } }
+            }
+        }
+        if !list.isEmpty && results.isEmpty { return }   // nothing could be read (offline, catalogue not loaded): try again next time
+        var out: [NewShow] = []
+        for it in list {
+            guard let snap = results[it.id], !snap.episodes.isEmpty else {
+                if let old = shows.first(where: { $0.id == it.id }) { out.append(old) }   // a failed read keeps what was known
+                continue
+            }
+            let cur = snap.episodes
+            guard let s = seen[it.id] else { seen[it.id] = SeenRecord(ids: cur.map(\.id), at: now()); continue }   // first sight: baseline
+            if EpisodeDiff.reindexed(current: cur, seen: Set(s.ids)) { seen[it.id] = SeenRecord(ids: cur.map(\.id), at: now()); continue }
+            let fresh = EpisodeDiff.newEpisodes(current: cur, seen: Set(s.ids))
+            guard !fresh.isEmpty else { continue }
+            var series = it
+            if !snap.poster.isEmpty { series.img = snap.poster }
+            out.append(NewShow(series: series, episodes: fresh, backdrop: snap.backdrop, plot: snap.plot, facts: snap.facts))
+        }
+        saveSeen()
+        shows = out
+        checkedAt = now()
+        saveCache()
     }
 }

@@ -9,6 +9,9 @@ struct DetailView: View {
     @State private var info: Details?
     @State private var failed = false
     @State private var season = ""
+    /// Episodes not seen before this visit: they carry the "NEW" pill until the page closes (rule 6).
+    @State private var newIds: Set<String> = []
+    @State private var scrollTo: String?
     @FocusState private var playFocused: Bool
 
     private var title: String { Clean.display(item.name.isEmpty ? (info?.name ?? "") : item.name) }
@@ -61,14 +64,18 @@ struct DetailView: View {
                     }
                     .frame(height: 62)
                     .focusSection()
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 26) {
-                            ForEach(Array(episodes.enumerated()), id: \.element.id) { i, e in
-                                Button { playEpisode(e) } label: { EpisodeCard(ep: e, index: i, fallback: item.img, progress: user.resumePoint(epItem(e))?.fraction) }
-                                    .buttonStyle(TileButtonStyle(scale: 1.07, lift: 6))
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(spacing: 26) {
+                                ForEach(Array(episodes.enumerated()), id: \.element.id) { i, e in
+                                    Button { playEpisode(e) } label: { EpisodeCard(ep: e, index: i, fallback: item.img, progress: user.resumePoint(epItem(e))?.fraction, isNew: newIds.contains(e.id)) }
+                                        .buttonStyle(TileButtonStyle(scale: 1.07, lift: 6))
+                                        .id(e.id)
+                                }
                             }
+                            .padding(.horizontal, Theme.x0).padding(.vertical, 14)
                         }
-                        .padding(.horizontal, Theme.x0).padding(.vertical, 14)
+                        .onChange(of: scrollTo) { _, id in if let id { proxy.scrollTo(id, anchor: .leading) } }
                     }
                     .frame(height: 242)
                     .scrollClipDisabled()
@@ -84,7 +91,21 @@ struct DetailView: View {
         .task {
             playFocused = true
             let d = await catalog.details(item)
-            if let d { info = d; season = d.seasons.first ?? "" } else { failed = true }
+            if let d {
+                info = d
+                var first = d.seasons.first ?? "", target: String?
+                if item.kind == .series {
+                    // rule 6: the episodes not seen yet get a "NEW" pill for this visit; the set is recorded now
+                    newIds = FollowedShows.shared.opened(saved, snapshot: FollowedShows.Snapshot(d))
+                    // rule 4: a tap on the "New episodes" row or the hero opens the season of the newest new episode
+                    if let h = FollowedShows.shared.takeSeasonHint(item.id), d.seasons.contains(h) {
+                        first = h
+                        target = d.episodes[h]?.last(where: { newIds.contains($0.id) })?.id
+                    }
+                }
+                season = first
+                if let target { try? await Task.sleep(nanoseconds: 300_000_000); scrollTo = target }
+            } else { failed = true }
         }
     }
 
@@ -136,6 +157,7 @@ struct EpisodeCard: View {
     let index: Int
     let fallback: String
     var progress: Double? = nil
+    var isNew = false
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             Theme.tile
@@ -146,6 +168,11 @@ struct EpisodeCard: View {
                 .font(.ui(21, .semibold)).lineLimit(1).shadow(color: .black.opacity(0.9), radius: 3, y: 2)
                 .padding(.horizontal, 16).padding(.bottom, progress == nil ? 14 : 20)
             if let p = progress { Rectangle().fill(Theme.red).frame(width: 380 * p, height: 6) }
+            if isNew {
+                Text("NEW").font(.ui(17, .bold)).tracking(1).foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(Capsule().fill(Theme.red)).padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
         .frame(width: 380, height: 214)
     }

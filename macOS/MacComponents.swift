@@ -59,13 +59,18 @@ struct PosterTile: View {
     var w: CGFloat = 124, h: CGFloat = 186
     /// The Home row it sits in, when it can be moved there.
     var row: TileRowRef? = nil
+    /// "New episodes" row: the show's new episodes ("2 new" on the poster, "S2 E5 · Title" under it); a click opens that season.
+    var update: NewShow? = nil
     @EnvironmentObject var user: UserStore
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var nav: MacNav
     @EnvironmentObject var catalog: Catalog
     @State private var hover = false
     var body: some View {
-        Button { nav.open(item) } label: {
+        Button {
+            if let update { FollowedShows.shared.seasonHint[update.id] = String(update.newest.season) }
+            nav.open(item)
+        } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottomLeading) {
                     MacImage(url: Img.url(item.img)) {
@@ -73,6 +78,11 @@ struct PosterTile: View {
                     }
                     .frame(width: w, height: h).clipped()
                     if let f = progress, f > 0.01 { ProgressLine(fraction: f).padding(8) }
+                    if let u = update {
+                        Text(u.badge).font(.system(size: 10, weight: .bold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.red)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(6)
+                            .accessibilityIdentifier("new-badge:" + item.id)
+                    }
                     if let l = item.lang { Text(l).font(.system(size: 9, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 2)
                         .background(RoundedRectangle(cornerRadius: 3).fill(Color.red)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(6) }
                 }
@@ -81,6 +91,9 @@ struct PosterTile: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(hover ? 0.9 : 0), lineWidth: 2))
                 .scaleEffect(hover ? 1.03 : 1)
                 Text(item.name).font(.system(size: 12)).foregroundStyle(MacTheme.soft).lineLimit(1).frame(width: w, alignment: .leading)
+                if let u = update {
+                    Text(u.caption).font(.system(size: 11)).foregroundStyle(MacTheme.dim).lineLimit(1).frame(width: w, alignment: .leading)
+                }
             }
         }
         .buttonStyle(.plain)

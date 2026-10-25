@@ -112,7 +112,7 @@ var U = (function () {
         return src;
     }
     // ---- lazy picture loader: at most 4 downloads at a time, only for tiles on screen, nearest to the focus first ----
-    var LZ = { max: 4, busy: [], timer: null, logged: 0, idle: 0 };
+    var LZ = { max: 4, busy: [], timer: null, logged: 0, idle: 0, done: {} };   // done: pictures already shown this session, drawn at once on a redraw
     function lzVisible(im) {
         if (!im.parentNode || !document.body.contains(im)) return null;
         if (document.documentElement.className.indexOf('playing') >= 0 && !U_inPlayer(im)) return null;
@@ -152,7 +152,7 @@ var U = (function () {
     function lzStart(im) {
         var t0 = Date.now(), p = im.parentNode;
         im.setAttribute('data-lz', 'run'); LZ.busy.push(im);
-        im.onload = function () { im.removeAttribute('data-src'); im.removeAttribute('data-lz'); im.onload = im.onerror = null; if (im.parentNode) im.parentNode.className += ' hasimg'; lzLog(true, im, t0); lzDone(im); };
+        im.onload = function () { LZ.done[im.getAttribute('data-src')] = 1; im.removeAttribute('data-src'); im.removeAttribute('data-lz'); im.onload = im.onerror = null; if (im.parentNode) im.parentNode.className += ' hasimg'; lzLog(true, im, t0); lzDone(im); };
         im.onerror = function () { var par = im.parentNode; lzLog(false, im, t0); im.onload = im.onerror = null; if (par) par.removeChild(im); lzDone(im); };
         im.src = im.getAttribute('data-src');
     }
@@ -161,6 +161,8 @@ var U = (function () {
     function imgTag(src, size) {
         var u = img(src, size);
         if (!u) return '';
+        // a redraw (search results, a grid page, a row) must not blank a picture the TV already holds
+        if (LZ.done[u]) return '<img src="' + esc(u) + '" alt="" onload="if(this.parentNode)this.parentNode.className+=\' hasimg\'" onerror="if(this.parentNode)this.parentNode.removeChild(this)">';
         lzKick();
         return '<img data-src="' + esc(u) + '" alt="">';
     }
@@ -202,8 +204,49 @@ var U = (function () {
         if (!had) out.unshift({ k: it.k, id: it.id, name: it.name, img: it.img || '', ext: it.ext || '', sid: it.sid || '' });
         myList = out; save('nx_mylist', myList);
         toast(had ? 'Removed from My List' : 'Added to My List');
+        if (!had && it.k === 'series') baseline(it.id);
         return !had;
     }
+    // ---- followed shows and their new episodes ----
+    // Followed = every series in My List plus every series with a Continue watching entry. Per followed series the app keeps the
+    // set of episode ids it has SEEN (nx_seen); episodes outside that set are new. The last refresh result is cached (nx_updates).
+    var seenMap = load('nx_seen', {}), updCache = load('nx_updates', { t: 0, items: {} });
+    function followed() {
+        var out = [], seen = {};
+        function add(id, name, img) { id = String(id); if (!id || id === 'undefined' || seen[id]) return; seen[id] = 1; out.push({ id: id, name: name || '', img: img || '' }); }
+        var c = continueList(); for (var i = 0; i < c.length; i++) if (c[i].series && c[i].series.id != null) add(c[i].series.id, c[i].series.name, c[i].series.img);
+        for (var j = 0; j < myList.length; j++) if (myList[j].k === 'series') add(myList[j].id, myList[j].name, myList[j].img);
+        return out;
+    }
+    function isFollowed(id) { var f = followed(); for (var i = 0; i < f.length; i++) if (f[i].id === String(id)) return true; return false; }
+    function epCleanTitle(t) { return t ? String(t).replace(/^.*?-\s*S\d+E\d+\s*-?\s*/i, '') : ''; }
+    // The provider's episodes map ({season: [episode]}) against the seen set. seenBefore false: nothing recorded yet (no news can be told).
+    function diffSeen(id, episodes) {
+        var rec = seenMap[String(id)], news = [];
+        if (!rec) return { seenBefore: false, news: news };
+        for (var s in episodes) { var l = episodes[s] || []; for (var j = 0; j < l.length; j++) if (!rec.ids[String(l[j].id)]) news.push({ season: s, num: +(l[j].episode_num || j + 1), title: epCleanTitle(l[j].title), id: String(l[j].id) }); }
+        news.sort(function (a, b) { return (+a.season) - (+b.season) || a.num - b.num; });
+        return { seenBefore: true, news: news };
+    }
+    function recordSeen(id, episodes) {
+        var ids = {}; for (var s in episodes) { var l = episodes[s] || []; for (var j = 0; j < l.length; j++) ids[String(l[j].id)] = 1; }
+        seenMap[String(id)] = { ids: ids, t: Date.now() };
+        var ks = []; for (var k in seenMap) ks.push(k);
+        if (ks.length > 120) { ks.sort(function (a, b) { return seenMap[a].t - seenMap[b].t; }); for (var q = 0; q < ks.length - 120; q++) delete seenMap[ks[q]]; }
+        save('nx_seen', seenMap);
+        clearUpdate(id);
+    }
+    function clearUpdate(id) { if (updCache.items[String(id)]) { delete updCache.items[String(id)]; save('nx_updates', updCache); } }
+    function updatesCache() { return updCache; }
+    function saveUpdates(c) { updCache = c; save('nx_updates', updCache); }
+    // shows with new episodes that are still followed, in the order of use
+    function updatesList() {
+        var f = followed(), out = [];
+        for (var i = 0; i < f.length; i++) { var u = updCache.items[f[i].id]; if (u && u.count > 0) out.push(u); }
+        return out;
+    }
+    // a show just followed: its current episodes are the baseline (nothing is new yet)
+    function baseline(id) { if (seenMap[String(id)]) return; api({ action: 'get_series_info', series_id: id }, function (e, d) { if (!e && d && d.episodes && !seenMap[String(id)]) recordSeen(id, d.episodes); }); }
     var favs = load('nx_favs', []);
     function isFav(sid) { for (var i = 0; i < favs.length; i++) if (String(favs[i].sid) === String(sid)) return true; return false; }
     // Favourites saved with a logo on a provider server that no longer answers get the logo from the
@@ -358,6 +401,6 @@ var U = (function () {
 
     return { $: $, esc: esc, setT: setT, clamp: clamp, getJSON: getJSON, api: api, liveUrl: liveUrl, filmUrl: filmUrl, epUrl: epUrl,
         img: img, imgTag: imgTag, logoFor: logoFor, repairFavLogos: repairFavLogos, wordmark: wordmark, cleanName: cleanName, initials: initials, inList: inList, toggleList: toggleList, myList: function () { return myList; },
-        setResume: setResume, getResume: getResume, setResumeArt: setResumeArt, continueList: continueList, removeResume: removeResume, toast: toast, clock: clock, fmtTime: fmtTime, log: diagLog, titleCase: titleCase, cleanTitle: cleanTitle, clearList: clearList, skelRow: skelRow, accounts: accounts, normBase: normBase, getText: getText, checkLogin: checkLogin, hasSubs: hasSubs, learnSubs: learnSubs, isWatched: isWatched, markWatched: markWatched, creditsAdd: creditsAdd, creditsMem: creditsMem, ccBadge: ccBadge, getTrackPref: getTrackPref, setTrackPref: setTrackPref,
+        setResume: setResume, getResume: getResume, setResumeArt: setResumeArt, continueList: continueList, removeResume: removeResume, toast: toast, clock: clock, fmtTime: fmtTime, log: diagLog, titleCase: titleCase, cleanTitle: cleanTitle, clearList: clearList, skelRow: skelRow, accounts: accounts, normBase: normBase, getText: getText, checkLogin: checkLogin, followed: followed, isFollowed: isFollowed, diffSeen: diffSeen, recordSeen: recordSeen, clearUpdate: clearUpdate, updatesCache: updatesCache, saveUpdates: saveUpdates, updatesList: updatesList, epCleanTitle: epCleanTitle, hasSubs: hasSubs, learnSubs: learnSubs, isWatched: isWatched, markWatched: markWatched, creditsAdd: creditsAdd, creditsMem: creditsMem, ccBadge: ccBadge, getTrackPref: getTrackPref, setTrackPref: setTrackPref,
         isFav: isFav, toggleFav: toggleFav, favs: function () { return favs; } };
 })();

@@ -48,6 +48,7 @@
 		39562AA0D05427A083933292 /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A08089BEAA1B460EF9B32F88 /* DetailView.swift */; };
 		3B8D496EA2F5D74CC1ACD5BF /* VLCKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AF735CAF2D678BF9ACE6FEB8 /* VLCKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		3CF98D3AAC8E85638181D022 /* BannerCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4AF6E426406A8D487FF0D2A /* BannerCard.swift */; };
+		3FE9E728A8AE71AB696BF184 /* NewEpisodesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DCD707AA372B53E01158E8 /* NewEpisodesTests.swift */; };
 		4166C113ABE5440E3A705C6C /* OnboardingEmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5361759FC49293B2224108 /* OnboardingEmptyState.swift */; };
 		41DBE82B05F3191A5AB935FF /* PlayerParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F073FB5FB27A2548380A839 /* PlayerParityTests.swift */; };
 		47DA2842F7DAEE87736B77E6 /* PerfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234F12EF8E6F153C44AA96EE /* PerfTests.swift */; };
@@ -99,6 +100,7 @@
 		A89640CA0A4D6B6EF8EF0177 /* OpeningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F3FA5C1118C19B62C75C05 /* OpeningView.swift */; };
 		AA08498B5A6C3DA9543FA1AB /* Browse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837F7F40A7BF9DE8BCA86894 /* Browse.swift */; };
 		AB06CEE714728E519774B811 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4F1F5E4BB6A2C8E15C0860 /* LibraryView.swift */; };
+		AD42E8503F391389DF247DFE /* NewEpisodesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FC7CF894D21FC698201DE0 /* NewEpisodesTests.swift */; };
 		AF175CB903CB9113E9FF39EE /* LibrarySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E74462F10F968485225318 /* LibrarySource.swift */; };
 		AFC3BA31336B7CBE97C2F028 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9BD4849AB6BC17C899AA3D5 /* Account.swift */; };
 		B450BEEEC45F87B035B6BB46 /* SettingsPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2A2CA3BFDEEC4113B61BC5 /* SettingsPickers.swift */; };
@@ -218,6 +220,7 @@
 		2E9011470183AA16FD47A913 /* Pages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pages.swift; sourceTree = "<group>"; };
 		2EEA60B3BC05B0F57B5B675C /* SubAutoSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubAutoSyncTests.swift; sourceTree = "<group>"; };
 		33E67CF7D6BE89104642B1FC /* MacComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacComponents.swift; sourceTree = "<group>"; };
+		34DCD707AA372B53E01158E8 /* NewEpisodesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewEpisodesTests.swift; sourceTree = "<group>"; };
 		396065854CFE954C85B5A4A6 /* NexusTVUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NexusTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		39700B88E053F2BA60589729 /* OpeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpeningTests.swift; sourceTree = "<group>"; };
 		3AB7A9237026BF2475B275DD /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -267,6 +270,7 @@
 		A1621D5F972C79A7979BCADA /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
 		A1815C586AF17E352227AE1F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		A1821FDE14BD571D0E83CB89 /* LiveLandingTV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLandingTV.swift; sourceTree = "<group>"; };
+		A1FC7CF894D21FC698201DE0 /* NewEpisodesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewEpisodesTests.swift; sourceTree = "<group>"; };
 		A229F4073E04943B09B290D5 /* PinnedBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedBanner.swift; sourceTree = "<group>"; };
 		A49C1F61BA76DFEC180A57FF /* NexusTVMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NexusTVMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9E1C357A4865A05E1937193 /* OpenSubtitles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSubtitles.swift; sourceTree = "<group>"; };
@@ -448,6 +452,7 @@
 		4DA5A33BA3468E3F3FE086A9 /* tvOSTests */ = {
 			isa = PBXGroup;
 			children = (
+				34DCD707AA372B53E01158E8 /* NewEpisodesTests.swift */,
 				614A394966E7F14B7F07CC72 /* PlayerRulesTests.swift */,
 			);
 			path = tvOSTests;
@@ -586,6 +591,7 @@
 				7DD98AA2BA83619DE067D6FE /* ChannelLogosTests.swift */,
 				20AA58B3C5506EB5DECD5737 /* ImageLoaderTests.swift */,
 				FA219B4779E2E50C3CADBE52 /* InWindowPlayerTests.swift */,
+				A1FC7CF894D21FC698201DE0 /* NewEpisodesTests.swift */,
 				39700B88E053F2BA60589729 /* OpeningTests.swift */,
 				F8F7587260CABA0EE0F2B22E /* PlayerLogicTests.swift */,
 				7172F89E57568EA155F92589 /* SourceTests.swift */,
@@ -836,6 +842,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3FE9E728A8AE71AB696BF184 /* NewEpisodesTests.swift in Sources */,
 				F721B0487F09C32B66674049 /* PlayerRulesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -857,6 +864,7 @@
 				CDBBC11B8DCFB4AC74B2BF66 /* ChannelLogosTests.swift in Sources */,
 				0A8323C8709428308679D71E /* ImageLoaderTests.swift in Sources */,
 				2C9D755A32E30EB90A7F5F9F /* InWindowPlayerTests.swift in Sources */,
+				AD42E8503F391389DF247DFE /* NewEpisodesTests.swift in Sources */,
 				496FDF4B71153E48F044EB6A /* OpeningTests.swift in Sources */,
 				DA8EBA571D7E9CDCE575DDFD /* PlayerLogicTests.swift in Sources */,
 				712830588C01F435E291730E /* SourceTests.swift in Sources */,
@@ -1068,7 +1076,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1302,7 +1310,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

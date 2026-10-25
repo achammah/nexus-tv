@@ -31,6 +31,23 @@ var Home = (function () {
     function paintEmpty() { var b = U.$('homeEmptyBtn'); if (b) b.className = 'btn' + (active ? ' focus' : ''); }
     var BTNS = [{ id: 'watch', label: '&#9654;&nbsp; Watch' }, { id: 'list', label: '&#43;&nbsp; My List' }];
 
+    // shows with new episodes lead the hero rotation, then the day's picks
+    function heroList(hd) {
+        var ups = U.updatesList().map(function (u) {
+            return { id: u.id, t: u.name, back: u.back || u.img, img: u.img, year: u.year, genre: u.genre, rating: u.rating, plot: u.plot, name: u.name, newest: u.newest,
+                kicker: 'NEW EPISODE \u00b7 S' + u.newest.season + ' E' + u.newest.num };
+        }), seen = {};
+        ups.forEach(function (x) { seen[String(x.id)] = 1; });
+        return ups.concat((hd.hero || []).filter(function (x) { return !seen[String(x.id)]; }));
+    }
+    function refreshNew() {
+        Data.refreshUpdates(false, function (changed) {
+            if (!changed || !homeData || emptyMode) return;
+            var was = hero.length ? hero[heroIdx].id : null;
+            hero = heroList(homeData); heroIdx = 0; if (hero.length) setHero(0);
+            var keepR = r; buildRows(homeData); r = Math.min(keepR, rows.length - 1); paint();
+        });
+    }
     function heroItem() { return hero[heroIdx] || null; }
     function setHero(i, first) {
         if (!hero.length) return;
@@ -46,7 +63,7 @@ var Home = (function () {
         };
         im.onerror = function () { if (first) markReady(); };
         im.src = url;
-        meta.innerHTML = '<div class="kicker">Top series</div><h1>' + U.esc(h.t) + '</h1>' +
+        meta.innerHTML = '<div class="kicker">' + (h.kicker ? U.esc(h.kicker) : 'Top series') + '</div><h1>' + U.esc(h.t) + '</h1>' +
             '<div class="facts">' + [h.year, h.genre, h.rating ? '&#9733; ' + U.esc(h.rating) : ''].filter(function (x) { return x; }).join('<i>&middot;</i>') + '</div>' +
             '<div class="plot">' + U.esc(h.plot) + '</div>';
         var d = '';
@@ -137,6 +154,10 @@ var Home = (function () {
             if (S.hideRows.indexOf(order[i]) >= 0 || !make[order[i]]) continue;
             var row = make[order[i]](); if (row) { row.key = order[i]; rows.push(row); }
         }
+        var ups = U.updatesList();
+        if (ups.length) rows.unshift({ title: 'New episodes', kind: 'poster', items: ups.map(function (u) {
+            return { k: 'series', id: u.id, name: u.name, img: u.img, fresh: u.count + ' new', cap: 'S' + u.newest.season + ' E' + u.newest.num + (u.newest.title ? ' \u00b7 ' + u.newest.title : ''), newest: u.newest };
+        }) });
         cols = []; for (var i = 0; i < rows.length; i++) cols.push(0);
         if (r > rows.length - 1) r = rows.length - 1;
         layout();
@@ -167,7 +188,7 @@ var Home = (function () {
                 var it = row.items[j];
                 var bar = it.resume && it.resume.dur ? '<div class="bar" style="width:' + Math.round(100 * it.resume.pos / it.resume.dur) + '%"></div>' : '';
                 h += '<div class="tile ' + (it.k === 'live' || it.k === 'all' ? 'logo' : 'poster') + (it.dark ? ' light' : '') + '" id="h' + i + '_' + j + '" style="left:' + (X0 + j * (g.w + g.gap)) + 'px;top:0;width:' + g.w + 'px;height:' + g.h + 'px">' +
-                    (it.fav ? '<div class="favstar">&#9733;</div>' : '') + (it.k === 'all' ? '<div class="nm" style="font-weight:600">' + U.esc(it.name) + '<br><span style="font-size:18px;color:rgba(255,255,255,.55)">' + it.n + ' channels &#8250;</span></div>' : (it.k === 'live' ? U.wordmark(it.name, true) : '<div class="nm">' + U.esc(it.name) + '</div>') + U.imgTag(it.k === 'live' ? U.logoFor(it.name, it.img) : it.img, 'w342')) + (it.k !== 'live' && it.k !== 'all' ? U.ccBadge(it.resume || it) : '') + bar + '</div>';
+                    (it.fav ? '<div class="favstar">&#9733;</div>' : '') + (it.fresh ? '<div class="newb">' + U.esc(it.fresh) + '</div>' : '') + (it.cap ? '<div class="ncap">' + U.esc(it.cap) + '</div>' : '') + (it.k === 'all' ? '<div class="nm" style="font-weight:600">' + U.esc(it.name) + '<br><span style="font-size:18px;color:rgba(255,255,255,.55)">' + it.n + ' channels &#8250;</span></div>' : (it.k === 'live' ? U.wordmark(it.name, true) : '<div class="nm">' + U.esc(it.name) + '</div>') + U.imgTag(it.k === 'live' ? U.logoFor(it.name, it.img) : it.img, 'w342')) + (it.k !== 'live' && it.k !== 'all' ? U.ccBadge(it.resume || it) : '') + bar + '</div>';
             }
             if (row.kind === 'logo') h += '<div class="cap" id="hc' + i + '" style="left:0;top:' + (g.h + 18) + 'px;width:380px"></div>';
             h += '</div>';
@@ -208,7 +229,8 @@ var Home = (function () {
         } else if (it.resume) {
             Detail.playResume(it.resume);
         } else {
-            App.show('detail', { k: it.k, id: it.id, name: it.name, img: it.img, ext: it.ext }, true);
+            var go = it.newest ? { season: it.newest.season, epId: it.newest.id } : null;
+            App.show('detail', { k: it.k, id: it.id, name: it.name, img: it.img, ext: it.ext, goto: go }, true);
         }
     }
     function key(c) {
@@ -224,7 +246,7 @@ var Home = (function () {
             if (c === 40 && rows.length) { r = 0; paint(); return true; }
             if (c === 13) {
                 var h = heroItem(); if (!h) return true;
-                if (btn === 0) App.show('detail', { k: 'series', id: h.id, name: h.t, img: h.img }, true);
+                if (btn === 0) { if (h.newest) Detail.playNewest(h); else App.show('detail', { k: 'series', id: h.id, name: h.t, img: h.img }, true); }
                 else { U.toggleList({ k: 'series', id: h.id, name: h.t, img: h.img }); drawButtons(); }
                 return true;
             }
@@ -271,16 +293,22 @@ var Home = (function () {
         if (noSource()) { showEmpty(); markReady(); return; }
         emptyMode = false; emptyEl.style.display = 'none'; page.style.display = '';
         Data.home(function (hd) {
-            hero = hd.hero || [];
+            homeData = hd; hero = heroList(hd);
             setHero(0, true);
             buildRows(hd);
             rotate();
+            refreshNew();
         });
     }
     function reloadRows() {
         if (noSource()) { showEmpty(); return; }
         if (emptyMode) { load(); return; }
-        Data.home(function (hd) { var keepR = r; buildRows(hd); r = Math.min(keepR, rows.length - 1); paint(); });
+        Data.home(function (hd) {
+            var keepR = r, ids = hero.map(function (x) { return x.id + (x.kicker || ''); }).join();
+            buildRows(hd); r = Math.min(keepR, rows.length - 1);
+            hero = heroList(hd); if (hero.map(function (x) { return x.id + (x.kicker || ''); }).join() !== ids) { heroIdx = 0; if (hero.length) setHero(0); }
+            paint(); refreshNew();
+        });
     }
     function init() {
         el = U.$('home');

@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject var nav: Nav
     @State private var heroIdx = 0
     @ObservedObject private var chrome = Chrome.shared
+    @ObservedObject private var followed = FollowedShows.shared
     @FocusState private var heroButton: Int?
     private let rotate = Timer.publish(every: 9, on: .main, in: .common).autoconnect()
 
@@ -16,6 +17,7 @@ struct HomeView: View {
     private var renderedRows: [String] {
         settings.visibleRows.filter { id in
             switch id {
+            case "updates": return !updates.isEmpty
             case "continue": return !user.continueList.isEmpty
             case "mylist": return !user.myList.isEmpty
             case "favMore": return !user.favs(outside: settings.countries).isEmpty
@@ -24,7 +26,11 @@ struct HomeView: View {
         }
     }
 
-    private var hero: HeroItem? { catalog.hero.isEmpty ? nil : catalog.hero[heroIdx % catalog.hero.count] }
+    /// Followed shows with episodes not seen yet (rule 4).
+    private var updates: [NewShow] { followed.visible(followed: user.followedSeries) }
+    /// Shows with new episodes first, then the top series (rule 5).
+    private var heroes: [HomeHero] { HomeHero.list(updates: updates, base: catalog.hero) }
+    private var hero: HomeHero? { let h = heroes; return h.isEmpty ? nil : h[heroIdx % h.count] }
 
     var body: some View {
         let _ = Metrics.shared.count("HomeView")
@@ -46,16 +52,24 @@ struct HomeView: View {
             Color.black.frame(height: 150).opacity(chrome.scrolled ? 1 : 0).allowsHitTesting(false)
         }
         .onReceive(rotate) { _ in
-            guard catalog.hero.count > 1, !chrome.headerHidden, nav.playing == nil, nav.movingRow == nil, heroButton == nil else { return }
-            withAnimation(.easeInOut(duration: 0.6)) { heroIdx = (heroIdx + 1) % catalog.hero.count }
+            let n = heroes.count
+            guard n > 1, !chrome.headerHidden, nav.playing == nil, nav.movingRow == nil, heroButton == nil else { return }
+            withAnimation(.easeInOut(duration: 0.6)) { heroIdx = (heroIdx + 1) % n }
+        }
+        // rule 3: on Home load, then at most once an hour (the store keeps the time); again when the followed shows or the account change
+        .task(id: "\(catalog.state == .ready)-\(catalog.activeId)-\(user.followedSeries.map(\.id).joined(separator: ","))") {
+            guard catalog.state == .ready else { return }
+            followed.configure(catalog: catalog)
+            await followed.refresh(followed: user.followedSeries)
         }
     }
 
     // MARK: hero
 
     private func stepHero(_ d: Int) {
-        guard catalog.hero.count > 1 else { return }
-        withAnimation(.easeOut(duration: 0.25)) { heroIdx = (heroIdx + d + catalog.hero.count) % catalog.hero.count }
+        let n = heroes.count
+        guard n > 1 else { return }
+        withAnimation(.easeOut(duration: 0.25)) { heroIdx = (heroIdx + d + n) % n }
     }
 
     private var heroSection: some View {
@@ -75,9 +89,9 @@ struct HomeView: View {
 
             if let h = hero {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Top series").font(.ui(20, .bold)).tracking(3).textCase(.uppercase).foregroundStyle(.white.opacity(0.6)).padding(.bottom, 14)
+                    Text(h.kicker).font(.ui(20, .bold)).tracking(3).textCase(.uppercase).foregroundStyle(.white.opacity(0.6)).padding(.bottom, 14)
                     Text(h.title).font(.ui(76, .bold)).tracking(-1).lineLimit(1).padding(.bottom, 16)
-                    Facts(parts: [h.year, h.genre, h.rating.isEmpty ? "" : "★ " + String(h.rating.prefix(3))].filter { !$0.isEmpty }).padding(.bottom, 16)
+                    Facts(parts: h.facts).padding(.bottom, 16)
                     Text(h.plot).font(.ui(24)).lineSpacing(6).foregroundStyle(.white.opacity(0.72)).lineLimit(2).frame(width: 900, alignment: .leading)
                 }
                 .frame(width: 900, alignment: .leading)
@@ -86,7 +100,7 @@ struct HomeView: View {
                 .id("meta" + h.id).transition(.opacity)
 
                 HStack(spacing: 22) {
-                    Button { nav.open(seriesItem(h)) } label: { Label("Watch", systemImage: "play.fill") }
+                    Button { if let n = h.update { playNew(n) } else { nav.open(seriesItem(h)) } } label: { Label(h.update == nil ? "Watch" : "Play", systemImage: "play.fill") }
                         .focused($heroButton, equals: 0)
                     Button { user.toggle(seriesItem(h)) } label: {
                         user.inList(seriesItem(h)) ? Label("In My List", systemImage: "checkmark") : Label("My List", systemImage: "plus")
@@ -112,8 +126,8 @@ struct HomeView: View {
                 .disabled(nav.movingRow != nil)
 
                 HStack(spacing: 10) {
-                    ForEach(0..<catalog.hero.count, id: \.self) { i in
-                        Capsule().fill(i == heroIdx % catalog.hero.count ? Color.white : Color.white.opacity(0.35)).frame(width: i == heroIdx % catalog.hero.count ? 34 : 10, height: 10)
+                    ForEach(0..<heroes.count, id: \.self) { i in
+                        Capsule().fill(i == heroIdx % heroes.count ? Color.white : Color.white.opacity(0.35)).frame(width: i == heroIdx % heroes.count ? 34 : 10, height: 10)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, Theme.x0).padding(.top, 625)
@@ -132,13 +146,30 @@ struct HomeView: View {
         .zIndex(-1)
     }
 
-    private func seriesItem(_ h: HeroItem) -> MediaItem { MediaItem(kind: .series, id: h.id, name: h.title, img: h.cover) }
+    private func seriesItem(_ h: HomeHero) -> MediaItem { MediaItem(kind: .series, id: h.id, name: h.title, img: h.cover) }
+
+    /// The hero's Play on a show with new episodes: the newest new episode, with the ones after it queued.
+    private func playNew(_ n: NewShow) {
+        Task {
+            let snap = await followed.fetch?(n.series)
+            let title = Clean.display(n.series.name)
+            let poster = n.series.img
+            guard let p = EpisodeDiff.plan(episodes: snap?.episodes ?? n.episodes, play: n.newest.id, series: n.series, title: title, poster: poster) else { return }
+            nav.play(p.item, startMs: 0, subtitle: p.item.sub, next: p.next, picture: n.backdrop.isEmpty ? poster : n.backdrop)
+        }
+    }
 
     // MARK: shelves
 
     @ViewBuilder
     private func shelf(_ id: String) -> some View {
         switch id {
+        case "updates":
+            let u = updates
+            if !u.isEmpty {
+                Shelf(rowId: id, title: "New episodes", sub: nil, shape: .poster,
+                      tiles: u.map { ShelfItem(item: $0.series, badge: $0.badge, caption: $0.caption, update: $0) })
+            }
         case "continue":
             let c = user.continueList
             if !c.isEmpty {
@@ -183,6 +214,10 @@ struct ShelfItem: Identifiable {
     var resume: ResumePoint? = nil
     var fav = false
     var allChannels: (cc: String, total: Int?)? = nil
+    /// "New episodes" row: "2 new" on the poster, "S2 E5 · Title" under it.
+    var badge: String? = nil
+    var caption: String? = nil
+    var update: NewShow? = nil
     var id: String { allChannels.map { "all:" + $0.cc } ?? item.key }
 }
 
@@ -310,6 +345,12 @@ struct ShelfTile: View {
                     .padding(.horizontal, 16).frame(width: w, height: h).background(Theme.tile)
                 } else {
                     TileFace(item: item, shape: shape, w: w, h: h, progress: tile.progress, fav: tile.fav)
+                        .overlay(alignment: .topTrailing) {
+                            if let b = tile.badge {
+                                Text(b).font(.ui(18, .bold)).foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 5)
+                                    .background(Capsule().fill(Theme.red)).padding(10)
+                            }
+                        }
                 }
             }
             .buttonStyle(TileButtonStyle())
@@ -319,6 +360,9 @@ struct ShelfTile: View {
             .focused($focused)
             .onChange(of: focused) { _, f in if f, nav.tab == .home, Chrome.shared.headerHidden == isFirstRow { Chrome.shared.headerHidden = !isFirstRow; if isFirstRow { Chrome.shared.scrolled = false } } }
             .tileMenu(for: item, nav: nav, row: rowId, tile: tile.id) { if tile.allChannels == nil { menu } }
+            if let cap = tile.caption {
+                Text(cap).font(.ui(20, .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1).frame(width: w, alignment: .leading).padding(.top, 12)
+            }
             if shape == .logo {
                 HStack(spacing: 10) {
                     Text(item.name).font(.ui(22, .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
@@ -338,6 +382,7 @@ struct ShelfTile: View {
         if nav.movingRow != nil { nav.stopMoving(); return }
         if let all = tile.allChannels { nav.openGuide(all.cc); return }
         if let r = tile.resume { nav.play(r.item, startMs: r.posMs, subtitle: r.item.seriesName ?? "", picture: r.item.img); return }
+        if let u = tile.update { FollowedShows.shared.seasonHint[u.id] = String(u.newest.season); nav.open(item); return }
         if item.kind == .live {
             let i = list.firstIndex { $0.id == item.id } ?? 0
             nav.play(item, list: list, index: i, subtitle: item.sub)

@@ -57,7 +57,10 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; 
 .tile .nm { position: absolute; left: 12px; right: 12px; top: 50%; margin-top: -18px; height: 36px; line-height: 36px; text-align: center;
   font-size: 24px; font-weight: 700; color: rgba(255,255,255,.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile.poster .nm { top: auto; bottom: 18px; margin: 0; height: auto; max-height: 112px; overflow: hidden; line-height: 28px; white-space: normal; font-size: 22px; }
-.tile img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.tile img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 14px; }
+/* the 2017 engine drops a rounded overflow clip on a composited child while the tile scales or slides: the picture carries its own radius and the tile masks its corners */
+.tile, .ep { -webkit-mask-image: -webkit-radial-gradient(white, black); }
+.ep img { border-radius: 14px; }
 .tile.logo img { left: 18%; top: 14%; width: 64%; height: 72%; }
 .tile.logo.hasimg .nm, .tile.poster.hasimg .nm { display: none; }
 .tile.focus { -webkit-transform: translateY(-8px) scale(1.1); transform: translateY(-8px) scale(1.1); z-index: 3;
@@ -691,3 +694,9 @@ html.intro #gpk, html.playing #gpk { visibility: hidden; }
 .chl.hasimg .wm { display: none; }
 .chl .wm.s1 span { font-size: 24px; } .chl .wm.s2 span { font-size: 20px; } .chl .wm.s3 span { font-size: 16px; }
 .chl.focus { -webkit-transform: translateY(-6px) scale(1.07); transform: translateY(-6px) scale(1.07); z-index: 3; box-shadow: 0 18px 40px rgba(0,0,0,.8), 0 0 0 4px #fff; }
+
+/* new episodes: count badge and caption on a show tile, NEW pill on an episode of the show page */
+.tile .newb { position: absolute; left: 10px; top: 10px; height: 30px; line-height: 30px; padding: 0 12px; border-radius: 15px; z-index: 3; font-size: 17px; font-weight: 700; color: #000; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.tile .ncap { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 12px 10px; z-index: 2; font-size: 17px; font-weight: 600; line-height: 1.2; color: #fff; text-shadow: 0 1px 4px #000;
+  background: -webkit-linear-gradient(top, rgba(0,0,0,0), rgba(0,0,0,.85)); background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.85)); }
+.ep .newp { position: absolute; left: 14px; top: 12px; height: 28px; line-height: 28px; padding: 0 12px; border-radius: 14px; z-index: 3; font-size: 15px; font-weight: 800; letter-spacing: .8px; color: #000; background: #fff; }

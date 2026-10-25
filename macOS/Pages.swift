@@ -17,7 +17,12 @@ struct HomePage: View {
     @EnvironmentObject var user: UserStore
     @EnvironmentObject var nav: MacNav
     @State private var heroIdx = 0
+    @ObservedObject private var followed = FollowedShows.shared
     private let rotate = Timer.publish(every: 9, on: .main, in: .common).autoconnect()
+
+    /// Followed shows with episodes not seen yet (rule 4), and the hero list that puts them first (rule 5).
+    private var updates: [NewShow] { followed.visible(followed: user.followedSeries) }
+    private var heroes: [HomeHero] { HomeHero.list(updates: updates, base: catalog.hero) }
 
     var body: some View {
         ScrollView {
@@ -31,14 +36,31 @@ struct HomePage: View {
             }
             .padding(.horizontal, 24).padding(.vertical, 22)
         }
-        .onReceive(rotate) { _ in if catalog.hero.count > 1 { withAnimation(.easeInOut(duration: 0.6)) { heroIdx = (heroIdx + 1) % catalog.hero.count } } }
+        .onReceive(rotate) { _ in let n = heroes.count; if n > 1 { withAnimation(.easeInOut(duration: 0.6)) { heroIdx = (heroIdx + 1) % n } } }
+        // rule 3: on Home load, then at most once an hour (the store keeps the time); again when the followed shows or the account change
+        .task(id: "\(catalog.state == .ready)-\(catalog.activeId)-\(user.followedSeries.map(\.id).joined(separator: ","))") {
+            guard catalog.state == .ready else { return }
+            followed.configure(catalog: catalog)
+            await followed.refresh(followed: user.followedSeries)
+        }
+    }
+
+    /// The hero's Play on a show with new episodes: the newest new episode, with the ones after it queued.
+    private func playNew(_ n: NewShow) {
+        Task {
+            let snap = await followed.fetch?(n.series)
+            let title = Clean.display(n.series.name)
+            guard let p = EpisodeDiff.plan(episodes: snap?.episodes ?? n.episodes, play: n.newest.id, series: n.series, title: title, poster: n.series.img) else { return }
+            Player(nav: nav).play(p.item, next: p.next, picture: n.series.img)
+        }
     }
 
     @ViewBuilder private var hero: some View {
-        if catalog.hero.isEmpty {
+        let all = heroes
+        if all.isEmpty {
             Shimmer().frame(height: 318)
         } else {
-            let h = catalog.hero[heroIdx % catalog.hero.count]
+            let h = all[heroIdx % all.count]
             let series = MediaItem(kind: .series, id: h.id, name: h.title, img: h.cover)
             ZStack(alignment: .bottomLeading) {
                 MacImage(url: Img.url(h.backdrop, .backdrop)) { Color.black }
@@ -47,13 +69,14 @@ struct HomePage: View {
                 LinearGradient(stops: [.init(color: .black.opacity(0.88), location: 0), .init(color: .black.opacity(0.55), location: 0.42),
                                        .init(color: .clear, location: 0.75)], startPoint: .leading, endPoint: .trailing)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("TOP SERIES").font(.system(size: 11, weight: .bold)).tracking(2).foregroundStyle(MacTheme.soft)
+                    Text(h.update == nil ? "TOP SERIES" : h.kicker).font(.system(size: 11, weight: .bold)).tracking(2).foregroundStyle(MacTheme.soft)
                     Text(h.title).font(.system(size: 42, weight: .heavy)).tracking(-1).lineLimit(1)
-                    Text([h.year, h.genre, h.rating.isEmpty ? "" : "★ " + String(h.rating.prefix(3))].filter { !$0.isEmpty }.joined(separator: "  ·  "))
+                    Text(h.facts.joined(separator: "  ·  "))
                         .font(.system(size: 13)).foregroundStyle(MacTheme.soft)
                     Text(h.plot).font(.system(size: 13.5)).lineSpacing(3).foregroundStyle(MacTheme.soft).lineLimit(2).frame(width: 520, alignment: .leading)
                     HStack(spacing: 10) {
-                        Button { nav.open(series) } label: { Label("Watch", systemImage: "play.fill") }.buttonStyle(MacPill(primary: true))
+                        Button { if let n = h.update { playNew(n) } else { nav.open(series) } } label: { Label(h.update == nil ? "Watch" : "Play", systemImage: "play.fill") }
+                            .buttonStyle(MacPill(primary: true)).accessibilityIdentifier("hero-play")
                         Button { user.toggle(series) } label: {
                             user.inList(series) ? Label("In My List", systemImage: "checkmark") : Label("My List", systemImage: "plus")
                         }.buttonStyle(MacPill())
@@ -62,8 +85,8 @@ struct HomePage: View {
                 }
                 .padding(.leading, 32).padding(.bottom, 30)
                 HStack(spacing: 6) {
-                    ForEach(0..<catalog.hero.count, id: \.self) { i in
-                        Capsule().fill(i == heroIdx % catalog.hero.count ? Color.white : Color.white.opacity(0.4)).frame(width: i == heroIdx % catalog.hero.count ? 22 : 7, height: 7)
+                    ForEach(0..<all.count, id: \.self) { i in
+                        Capsule().fill(i == heroIdx % all.count ? Color.white : Color.white.opacity(0.4)).frame(width: i == heroIdx % all.count ? 22 : 7, height: 7)
                             .onTapGesture { withAnimation { heroIdx = i } }
                     }
                 }
@@ -77,6 +100,17 @@ struct HomePage: View {
 
     @ViewBuilder private func row(_ id: String) -> some View {
         switch id {
+        case "updates" where !updates.isEmpty:
+            let list = settings.ordered("updates", updates, key: { $0.series.key })
+            VStack(alignment: .leading) {
+                RowTitle(title: "New episodes")
+                TileRow {
+                    ForEach(list, id: \.id) { n in
+                        PosterTile(item: n.series, row: TileRowRef(id: id, keys: list.map(\.series.key)), update: n)
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain).accessibilityIdentifier("row:updates")
         case "continue" where !user.continueList.isEmpty:
             let list = settings.ordered("continue", user.continueList, key: { $0.item.key })
             VStack(alignment: .leading) {

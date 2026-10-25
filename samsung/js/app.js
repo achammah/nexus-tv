@@ -143,7 +143,45 @@ var Data = (function () {
     }
     // A new source: forget everything loaded for the previous one.
     function reset() { live = {}; waiting = {}; cats = {}; lib = null; home = null; search = null; searchWait = []; more = null; moreWait = []; }
-    return { reset: reset, searchMore: searchMore, COUNTRIES: COUNTRIES, applyCountries: applyCountries, countryIndex: countryIndex, liveOf: liveOf, loadGroup: loadGroup,
+
+    // ---------- new episodes of followed shows ----------
+    // Series info of every followed show (cap 30, most recently used first, 3 at a time, at most once an hour); episodes outside the
+    // seen set are new. A show with no seen set yet gets its current episodes as the baseline. cb(changed) when done.
+    var refreshing = null;
+    function refreshUpdates(force, cb) {
+        var cache = U.updatesCache();
+        if (!force && Date.now() - cache.t < 3600000) { cb(false); return; }
+        if (refreshing) { refreshing.push(cb); return; }
+        refreshing = [cb];
+        var fl = U.followed().slice(0, 30), idx = 0, running = 0, left = fl.length, items = {}, okAny = false;
+        function finish() {
+            var old = U.updatesCache(), cbs = refreshing; refreshing = null;
+            U.saveUpdates({ t: okAny || !fl.length ? Date.now() : old.t, items: items });
+            for (var i = 0; i < cbs.length; i++) cbs[i](true);
+        }
+        if (!left) { finish(); return; }
+        (function pump() {
+            while (running < 3 && idx < fl.length) (function (sh) {
+                running++;
+                U.api({ action: 'get_series_info', series_id: sh.id }, function (err, d) {
+                    running--; left--;
+                    if (!err && d && d.episodes) {
+                        okAny = true;
+                        var r = U.diffSeen(sh.id, d.episodes);
+                        if (!r.seenBefore) U.recordSeen(sh.id, d.episodes);
+                        else if (r.news.length) {
+                            var inf = d.info || {}, nw = r.news[r.news.length - 1];
+                            items[sh.id] = { id: sh.id, name: sh.name, img: sh.img, count: r.news.length, newest: nw, newIds: r.news.map(function (x) { return x.id; }),
+                                back: (inf.backdrop_path && inf.backdrop_path[0]) || inf.cover_big || sh.img, plot: inf.plot || inf.description || '',
+                                year: String(inf.releasedate || inf.releaseDate || '').slice(0, 4), genre: String(inf.genre || '').split(/[\/,]/)[0], rating: inf.rating ? String(inf.rating).slice(0, 3) : '' };
+                        }
+                    } else if (U.updatesCache().items[sh.id]) items[sh.id] = U.updatesCache().items[sh.id];   // the provider did not answer: keep what was known
+                    if (!left) finish(); else pump();
+                });
+            })(fl[idx++]);
+        })();
+    }
+    return { refreshUpdates: refreshUpdates, reset: reset, searchMore: searchMore, COUNTRIES: COUNTRIES, applyCountries: applyCountries, countryIndex: countryIndex, liveOf: liveOf, loadGroup: loadGroup,
         categories: categories, itemsOf: itemsOf, cleanCat: cleanCat, langTag: langTag, library: library, home: homeData, searchIndex: searchIndex };
 })();
 
