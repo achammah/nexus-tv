@@ -221,9 +221,28 @@ var U = (function () {
         save('nx_tracks', trackPrefs);
     }
     var resume = load('nx_resume', {});
+    // Episodes played to their end: the strip in the player marks them WATCHED. Kept per source, newest 400.
+    var watchedMap = load('nx_watched', {});
+    function markWatched(it) {
+        watchedMap[itemKey(it)] = Date.now();
+        var ks = []; for (var k in watchedMap) ks.push(k);
+        if (ks.length > 400) { ks.sort(function (a, b) { return watchedMap[a] - watchedMap[b]; }); for (var i = 0; i < ks.length - 400; i++) delete watchedMap[ks[i]]; }
+        save('nx_watched', watchedMap);
+    }
+    function isWatched(it) { return !!watchedMap[itemKey(it)]; }
+    // Where each show's credits start, as seconds before the end of an episode: the last 5 samples per series, their median is the cue.
+    var creditsMap = load('nx_credits', {});
+    function creditsAdd(seriesId, secs) {
+        var a = creditsMap[seriesId] || []; a.push(secs); if (a.length > 5) a.shift(); creditsMap[seriesId] = a; save('nx_credits', creditsMap);
+    }
+    function creditsMem(seriesId) {
+        var a = creditsMap[seriesId]; if (!a || !a.length) return 0;
+        var b = a.slice().sort(function (x, y) { return x - y; }), m = b.length >> 1;
+        return b.length % 2 ? b[m] : Math.round((b[m - 1] + b[m]) / 2);
+    }
     function setResume(it, pos, dur) {
         var key = itemKey(it);
-        if (dur && pos > dur - 60000) { delete resume[key]; }
+        if (dur && pos > dur - 60000) { delete resume[key]; if (it.k === 'ep') markWatched(it); }
         else {
             // a save never drops a picture the entry already had (a film started from a page without art)
             var old = resume[key], img = it.img || (old && old.img) || '', ser = it.series || null;
@@ -288,6 +307,6 @@ var U = (function () {
 
     return { $: $, esc: esc, setT: setT, clamp: clamp, getJSON: getJSON, api: api, liveUrl: liveUrl, filmUrl: filmUrl, epUrl: epUrl,
         img: img, imgTag: imgTag, logoFor: logoFor, repairFavLogos: repairFavLogos, wordmark: wordmark, cleanName: cleanName, initials: initials, inList: inList, toggleList: toggleList, myList: function () { return myList; },
-        setResume: setResume, getResume: getResume, setResumeArt: setResumeArt, continueList: continueList, removeResume: removeResume, toast: toast, clock: clock, fmtTime: fmtTime, log: diagLog, titleCase: titleCase, cleanTitle: cleanTitle, clearList: clearList, skelRow: skelRow, accounts: accounts, normBase: normBase, getText: getText, checkLogin: checkLogin, hasSubs: hasSubs, learnSubs: learnSubs, ccBadge: ccBadge, getTrackPref: getTrackPref, setTrackPref: setTrackPref,
+        setResume: setResume, getResume: getResume, setResumeArt: setResumeArt, continueList: continueList, removeResume: removeResume, toast: toast, clock: clock, fmtTime: fmtTime, log: diagLog, titleCase: titleCase, cleanTitle: cleanTitle, clearList: clearList, skelRow: skelRow, accounts: accounts, normBase: normBase, getText: getText, checkLogin: checkLogin, hasSubs: hasSubs, learnSubs: learnSubs, isWatched: isWatched, markWatched: markWatched, creditsAdd: creditsAdd, creditsMem: creditsMem, ccBadge: ccBadge, getTrackPref: getTrackPref, setTrackPref: setTrackPref,
         isFav: isFav, toggleFav: toggleFav, favs: function () { return favs; } };
 })();

@@ -3,11 +3,12 @@ import AppKit
 import VLCKit
 
 /// The player inside the library window: the video fills the window, a floating control bar shows on any mouse move
-/// and hides after 3 s,
-/// back 10 s, play/pause, forward 10 s, audio, CC (file + online subtitles, Earlier / Later), next episode with a
-/// small picture of it, picture in picture (a small window on top of the others) and full screen.
-/// Keys: space play/pause · ← → 10 s · ↑ ↓ change channel (live) · F full screen · Esc leaves full screen, PiP, then the
-/// player (back to the page it was started from, like the back chevron).
+/// and hides after 3 s. Films and episodes: back 10 s, play/pause, forward 10 s, labelled Audio and Subtitles (popups),
+/// Episodes "n of m" (the strip), Next episode once the credits start, picture in picture and full screen (PlayerParts.swift).
+/// Live channels keep the small bar with the channel arrows.
+/// Keys: space play/pause · ← → 10 s (on the Episodes strip: previous / next episode) · Return plays the strip's or the card's episode ·
+/// ↑ ↓ change channel (live; ↓ opens the strip, ↑ closes it for an episode) · F full screen · Esc closes the popup, the strip, the end card
+/// (the credits play on), answers the still-watching toast with Keep watching, leaves full screen, PiP, then the player (back to the page it was started from, like the back chevron).
 struct MacPlayerView: View {
     let start: MacPlay
     let window: WindowRef
@@ -45,26 +46,43 @@ struct MacPlayerView: View {
             // hidden or minimised: the account's only stream is given back for another device; play reopens it
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in model.saveResume(); model.vlc.release() }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMiniaturizeNotification)) { _ in model.saveResume(); model.vlc.release() }
-            .onContinuousHover { _ in poke() }
+            .onContinuousHover { _ in poke(); model.mouseMoved() }
             .onKeyPress { press in key(press) }
             .onChange(of: model.item) { _, _ in poke() }
     }
 
     private func key(_ p: KeyPress) -> KeyPress.Result {
         poke()
+        model.keyPressed()
+        let strip = model.stripOpen
         switch p.key {
         case .space: if !model.isLive { model.vlc.toggle() }; return .handled
-        case .leftArrow: if !model.isLive { model.seek(by: -10_000) }; return .handled
-        case .rightArrow: if !model.isLive { model.seek(by: 10_000) }; return .handled
-        case .upArrow: model.zap(-1); return .handled
-        case .downArrow: model.zap(1); return .handled
+        case .leftArrow:
+            if strip { model.stripMove(-1) } else if !model.isLive { model.seek(by: -10_000) }
+            return .handled
+        case .rightArrow:
+            if strip { model.stripMove(1) } else if !model.isLive { model.seek(by: 10_000) }
+            return .handled
+        case .upArrow:
+            if strip { model.closeStrip() } else { model.zap(-1) }
+            return .handled
+        case .downArrow:
+            if model.isLive { model.zap(1) } else if !strip { model.openStrip(); model.stripPinned = true }
+            return .handled
         case .escape:
-            if model.upLeft > 0 { model.upHide() }
+            if model.popup != nil { model.popup = nil }
+            else if strip { model.closeStrip() }
+            else if model.still != nil { model.keepWatching() }
+            else if model.card != nil { model.dismissCard() }
             else if window.window?.styleMask.contains(.fullScreen) == true { toggleFull() }
             else if pip { togglePip() }
             else { leave() }
             return .handled
-        case .return: if model.upLeft > 0 { model.playNext(); return .handled }; return .ignored
+        case .return:
+            if strip { model.stripPick(model.stripSel); return .handled }
+            if model.card != nil { model.acceptCard(); return .handled }
+            if model.still != nil { model.keepWatching(); return .handled }
+            return .ignored
         default:
             if p.characters.lowercased() == "f" { toggleFull(); return .handled }
             return .ignored
@@ -78,7 +96,8 @@ struct MacPlayerView: View {
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             // -NXHudStay YES keeps the bar up (screenshots)
-            if !Task.isCancelled && dragMs == nil && !(model.vlc.paused && !model.isLive) && !UserDefaults.standard.bool(forKey: "NXHudStay") {
+            if !Task.isCancelled && dragMs == nil && !(model.vlc.paused && !model.isLive) && !model.stripOpen && model.popup == nil
+                && !UserDefaults.standard.bool(forKey: "NXHudStay") {
                 withAnimation(.easeOut(duration: 0.25)) { hudVisible = false }
             }
         }
@@ -134,7 +153,7 @@ private struct PlayerBody: View {
             else if model.reconnecting { pill("Reconnecting…  \(model.attempts)/5", spinner: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(24) }
             if vlc.failed { pill("This could not be played") }
             if let m = model.message { pill(m).frame(maxHeight: .infinity, alignment: .top).padding(.top, 60) }
-            if hudVisible || model.upLeft > 0 {
+            if hudVisible {
                 LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom).frame(height: 60).frame(maxHeight: .infinity, alignment: .top)
                     .allowsHitTesting(false)
                 Text(model.title).font(.system(size: 13, weight: .semibold)).frame(maxHeight: .infinity, alignment: .top).padding(.top, 12)
@@ -144,9 +163,21 @@ private struct PlayerBody: View {
                     .accessibilityIdentifier("player-back")
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(.leading, 84).padding(.top, 4)
             }
-            if hudVisible && !pip { hud.frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 22).transition(.opacity) }
+            if model.popup != nil { Color.clear.contentShape(Rectangle()).onTapGesture { model.popup = nil } }
+            if hudVisible && !pip {
+                if model.isLive { hud.frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 22).transition(.opacity) }
+                else { VODLayer(model: model, vlc: vlc, dragMs: $dragMs, togglePip: togglePip, toggleFull: toggleFull).transition(.opacity) }
+            }
             if hudVisible && vlc.started && pip { pipBar.frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 10) }
-            if model.upLeft > 0, let n = model.next.first { upNext(n).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(30) }
+            // the end card and the still-watching toast sit bottom right, above the bar
+            VStack(alignment: .trailing, spacing: 10) {
+                if let ask = model.still { StillWatchingToast(model: model, ask: ask).transition(.move(edge: .trailing).combined(with: .opacity)) }
+                if let c = model.card, !pip { EndCardView(model: model, card: c).transition(.move(edge: .trailing).combined(with: .opacity)) }
+            }
+            .padding(.trailing, 24).padding(.bottom, pip ? 60 : (model.isLive ? 100 : (hudVisible ? 146 + (model.stripOpen ? 176 : 0) : 30)))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .animation(.easeOut(duration: 0.2), value: model.card)
+            .animation(.easeOut(duration: 0.2), value: model.still != nil)
         }
         .ignoresSafeArea()
         .frame(minWidth: 320, minHeight: 180)
@@ -166,40 +197,19 @@ private struct PlayerBody: View {
             .padding(.horizontal, 18).padding(.vertical, 10).background(Capsule().fill(Color.black.opacity(0.75)))
     }
 
+    /// The bar of a live channel: the LIVE mark, the channel arrows, audio, subtitles, picture in picture and full screen.
     private var hud: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 16) {
-                if !model.isLive {
-                    icon("gobackward.10", "Back 10 seconds", 22) { model.seek(by: -10_000) }
-                    icon(vlc.paused ? "play.fill" : "pause.fill", vlc.paused ? "Play" : "Pause", 28) { vlc.toggle() }
-                    icon("goforward.10", "Forward 10 seconds", 22) { model.seek(by: 10_000) }
-                } else {
-                    LivePillMac()
-                    icon("chevron.up", "Previous channel", 18) { model.zap(-1) }
-                    icon("chevron.down", "Next channel", 18) { model.zap(1) }
-                }
-                Spacer()
-                audioMenu
-                ccMenu
-                if let n = model.next.first, !model.isLive {
-                    Button { model.playNext() } label: {
-                        HStack(spacing: 8) {
-                            MacImage(url: Img.url(n.img, .still)) { MacTheme.tile }.frame(width: 48, height: 27).clipShape(RoundedRectangle(cornerRadius: 4))
-                            Image(systemName: "forward.end.fill").font(.system(size: 11))
-                            Text("Next episode").font(.system(size: 12, weight: .semibold))
-                        }
-                        .padding(.leading, 4).padding(.trailing, 12).frame(height: 34)
-                        .background(Capsule().fill(Color.white.opacity(0.12))).overlay(Capsule().stroke(Color.white.opacity(0.16)))
-                    }
-                    .buttonStyle(.plain).help(n.name + (n.sub.isEmpty ? "" : " · " + n.sub))
-                    .accessibilityLabel("Next episode").accessibilityIdentifier("next-episode")
-                }
-                icon("pip.enter", "Picture in picture", 18, action: togglePip)
-                icon("arrow.up.left.and.arrow.down.right", "Full screen", 17, action: toggleFull)
-            }
-            if !model.isLive { timeline }
+        HStack(spacing: 16) {
+            LivePillMac()
+            icon("chevron.up", "Previous channel", 18) { model.zap(-1) }
+            icon("chevron.down", "Next channel", 18) { model.zap(1) }
+            Spacer()
+            audioMenu
+            ccMenu
+            icon("pip.enter", "Picture in picture", 18, action: togglePip)
+            icon("arrow.up.left.and.arrow.down.right", "Full screen", 17, action: toggleFull)
         }
-        .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, model.isLive ? 12 : 14)
+        .padding(.horizontal, 18).padding(.vertical, 12)
         .frame(width: 760)
         .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial).environment(\.colorScheme, .dark))
         .background(RoundedRectangle(cornerRadius: 14).fill(Color(red: 28 / 255, green: 28 / 255, blue: 32 / 255).opacity(0.55)))
@@ -213,29 +223,6 @@ private struct PlayerBody: View {
             icon("pip.exit", "Leave picture in picture", 16, action: togglePip)
         }
         .padding(.horizontal, 14).padding(.vertical, 8).background(Capsule().fill(Color.black.opacity(0.6)))
-    }
-
-    private var timeline: some View {
-        let shown = dragMs ?? vlc.timeMs
-        return HStack(spacing: 12) {
-            Text(fmt(shown)).font(.system(size: 12)).monospacedDigit().foregroundStyle(MacTheme.soft)
-            GeometryReader { g in
-                let f = vlc.lengthMs > 0 ? CGFloat(min(1, Double(shown) / Double(vlc.lengthMs))) : 0
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.25)).frame(height: 4)
-                    Capsule().fill(Color.white).frame(width: g.size.width * f, height: 4)
-                    Circle().fill(Color.white).frame(width: 13, height: 13).offset(x: g.size.width * f - 6.5)
-                }
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0)
-                    .onChanged { v in dragMs = Int(Double(max(0, min(g.size.width, v.location.x)) / g.size.width) * Double(vlc.lengthMs)) }
-                    .onEnded { _ in if let d = dragMs { vlc.seek(toMs: d) }; dragMs = nil })
-            }
-            .frame(height: 16)
-            .accessibilityElement().accessibilityLabel("Timeline").accessibilityValue(fmt(shown)).accessibilityIdentifier("timeline")
-            Text(vlc.lengthMs > 0 ? "−" + fmt(max(0, vlc.lengthMs - shown)) : "").font(.system(size: 12)).monospacedDigit().foregroundStyle(MacTheme.soft)
-        }
     }
 
     private var audioMenu: some View {
@@ -283,26 +270,6 @@ private struct PlayerBody: View {
         } label: { Image(systemName: "captions.bubble").font(.system(size: 18)) }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .accessibilityLabel("Subtitles").accessibilityIdentifier("cc-menu")
-    }
-
-    private func upNext(_ n: MediaItem) -> some View {
-        let ep = n.name.components(separatedBy: " · ").last ?? n.name
-        return HStack(spacing: 16) {
-            MacImage(url: Img.url(n.img, .still)) { MacTheme.tile }.frame(width: 160, height: 90).clipShape(RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 8) {
-                Text("NEXT EPISODE").font(.system(size: 11, weight: .bold)).tracking(2).foregroundStyle(MacTheme.dim)
-                Text(n.sub.isEmpty ? ep : ep + " · " + n.sub).font(.system(size: 15, weight: .semibold)).lineLimit(2).frame(width: 240, alignment: .leading)
-                HStack(spacing: 10) {
-                    Button { model.playNext() } label: { Label("Play now · \(model.upLeft)", systemImage: "play.fill").monospacedDigit() }
-                        .buttonStyle(MacPill(primary: true)).accessibilityIdentifier("play-now")
-                    Button("Keep watching") { model.upHide() }.buttonStyle(MacPill())
-                }
-            }
-        }
-        .padding(18)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(red: 20 / 255, green: 20 / 255, blue: 24 / 255).opacity(0.94)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.12)))
-        .accessibilityElement(children: .contain).accessibilityIdentifier("up-next")
     }
 
     private func icon(_ name: String, _ label: String, _ size: CGFloat, action: @escaping () -> Void) -> some View {

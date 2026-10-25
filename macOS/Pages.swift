@@ -84,7 +84,12 @@ struct HomePage: View {
                 TileRow {
                     ForEach(list, id: \.item.key) { r in
                         ResumeTile(point: r) { Player(nav: nav).play(r.item, startMs: r.posMs) }
-                            .contextMenu { TileMenu.resume(r, row: "continue", keys: list.map(\.item.key), user: user, settings: settings, nav: nav) }
+                            .onHover { h in
+                                if h, r.item.kind == .episode, let sid = r.item.seriesId {
+                                    SeriesGuide.shared.prefetch(MediaItem(kind: .series, id: sid, name: r.item.seriesName ?? ""), catalog: catalog)
+                                }
+                            }
+                            .contextMenu { TileMenu.resume(r, row: "continue", keys: list.map(\.item.key), user: user, settings: settings, nav: nav, catalog: catalog) }
                     }
                 }
             }

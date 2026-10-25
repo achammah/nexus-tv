@@ -1,0 +1,77 @@
+{
+ "roots": [
+  "/Users/assem/nexus/nexus-organisation/work/frame-tv/appletv"
+ ],
+ "lanes": [
+  {
+   "id": "live-page",
+   "owns": [
+    "macOS/LivePage.swift",
+    "Shared/Core/CountryNames.swift",
+    "tvOS/Views/LiveBrowse*.swift",
+    "the Live / countries views in macOS/Pages.swift outside SearchEmptyState and SearchPage"
+   ],
+   "depends_on": [],
+   "surfaces": [
+    "Mac Live page",
+    "Apple TV Live page"
+   ],
+   "unsplittable_reason": "one design (A) and one shared CountryNames map drive both platforms' Live page; splitting per platform would duplicate the map and the section rules"
+  },
+  {
+   "id": "lead-search-empty",
+   "owns": [
+    "macOS/Pages.swift SearchEmptyState and SearchPage"
+   ],
+   "depends_on": [],
+   "surfaces": [
+    "Mac Search empty state"
+   ],
+   "unsplittable_reason": ""
+  },
+  {
+   "id": "images",
+   "owns": [
+    "Shared/Core/ImageLoader.swift",
+    "Shared/Core/ChannelLogos.swift",
+    "Shared/Views/WordmarkTile.swift",
+    "macOS/MacComponents.swift",
+    "tvOS/Views/Components.swift",
+    "Tests/macOSTests/ImageLoaderTests.swift",
+    "Tests/macOSTests/ChannelLogosTests.swift"
+   ],
+   "depends_on": [],
+   "surfaces": [
+    "Mac + tvOS picture loading",
+    "channel logo fallback (twin, iptv-org, wordmark tile)"
+   ],
+   "unsplittable_reason": "one loader and one logo resolver serve both platforms' tiles"
+  },
+  {
+   "id": "sources",
+   "owns": [
+    "Shared/Core/Account.swift",
+    "Shared/Core/Catalog.swift",
+    "Shared/Core/Sources/**",
+    "Shared/Player/VLCController.swift",
+    "Shared/Views/Onboarding*.swift",
+    "macOS/AccountViews.swift",
+    "macOS/LibraryWindow.swift (except the Live-by-country sidebar section)",
+    "macOS/NexusTVMacApp.swift",
+    "tvOS/Views/OnboardingView.swift",
+    "tvOS/Views/SettingsView.swift",
+    "tvOS/Views/RootView.swift",
+    "tvOS/App/NexusTVApp.swift",
+    "Tests/macOSTests/Source*Tests.swift",
+    "Tests/macOSTests/Fixtures/**"
+   ],
+   "depends_on": [],
+   "surfaces": [
+    "onboarding v2 (Mac + tvOS)",
+    "Settings \u203a Sources (Mac + tvOS)"
+   ],
+   "unsplittable_reason": "one source protocol and one sign-in flow drive both platforms; neutral labels ride the same files"
+  }
+ ],
+ "units": 4
+}

@@ -19,3 +19,6 @@ shots/netcut-*
 shots/perf-phases.txt
 shots/mac/
 __pycache__/
+.claude/
+.worktrees/
+Config/ExportOptions.plist

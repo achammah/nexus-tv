@@ -307,6 +307,14 @@ var Home = (function () {
             if (emptyMode) return false;
             if (!active || r < 0 || !rows[r]) return false;
             var row = rows[r], it = row.items[cols[r]], acts = [];
+            // a series (a tile, or the episode in Continue watching): the show menu, plus this row's own entries
+            if (it && (it.k === 'series' || (it.k === 'ep' && it.series && it.series.id != null))) {
+                var after = function () { Data.home(function (hd) { buildRows(hd); }); }, own = [];
+                if (row.key) own.push({ label: 'Move', icon: '&#8596;', run: function () { tileMoving = true; paint(); U.toast('Left / Right to move \u00b7 OK when done'); } });
+                if (it.resume) own.push({ label: 'Remove from Continue watching', icon: '&#8854;', red: true, run: function () { U.removeResume(it.resume); after(); } });
+                if (row.key) own.push({ label: 'Hide this row', icon: '&#8854;', red: true, run: function () { Settings.hideRow(row.key); after(); } });
+                if (SeriesMenu.open(it, own, after)) return true;
+            }
             if (it && it.k === 'live') {
                 acts.push({ label: U.isFav(it.sid) ? 'Remove from Favourites' : 'Add to Favourites', icon: U.isFav(it.sid) ? '&#9734;' : '&#9733;', run: function () {
                     U.toggleFav({ sid: it.sid, name: it.name, img: it.img, dark: it.dark, sub: it.sub, cc: (row.cc || '') }); Data.home(function (hd) { buildRows(hd); }); } });

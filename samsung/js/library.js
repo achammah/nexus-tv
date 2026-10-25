@@ -185,7 +185,14 @@ var Library = (function () {
         show: function (m) { if (m === 'mylist') { mode = ''; } setMode(m); },
         focus: function () { active = true; draw(); },
         blur: function () { active = false; draw(); },
-        refresh: function () { if (mode === 'mylist') loadMyList(); draw(); }
+        refresh: function () { if (mode === 'mylist') loadMyList(); draw(); },
+        // long press on a series poster (the Series page grid, My List): the show menu. Anything else opens as on a short press.
+        longPress: function () {
+            if (!active || onPill || view !== 'grid') return false;
+            var it = items[sel];
+            if (!it || it.k !== 'series') return false;
+            return SeriesMenu.open(it, [], function () { if (mode === 'mylist') loadMyList(); draw(); });
+        }
     };
 })();
 
@@ -205,8 +212,12 @@ var Detail = (function () {
         var nS = sIdx, nE = eIdx + 1;
         if (nE >= (eps[seasons[sIdx]] || []).length) { nS = sIdx + 1; nE = 0; }
         var e = nS < seasons.length && (eps[seasons[nS]] || [])[nE];
-        return e ? { s: nS, e: nE, name: 'S' + seasons[nS] + ' E' + (e.episode_num || nE + 1) + (e.title ? ' \u00b7 ' + e.title : '') } : null;
+        if (!e) return null;
+        var num = e.episode_num || nE + 1, secs = e.info && e.info.duration_secs ? e.info.duration_secs : 0;
+        return { s: nS, e: nE, name: 'S' + seasons[nS] + ' E' + num + (e.title ? ' \u00b7 ' + e.title : ''),
+            info: { tag: (nS !== sIdx ? 'S' + seasons[nS] + ' ' : '') + 'E' + num, title: cleanEp(e.title), mins: secs ? Math.round(secs / 60) : 0, img: e.info && e.info.movie_image ? e.info.movie_image : '', newSeason: nS !== sIdx } };
     }
+    function cleanEp(t) { return t ? String(t).replace(/^.*?-\s*S\d+E\d+\s*-?\s*/i, '') : ''; }
     function startEp(it, seasons, eps, sIdx, eIdx, moved) {
         var list = eps[seasons[sIdx]] || [], e = list[eIdx]; if (!e) return;
         if (moved) moved(sIdx, eIdx);
@@ -214,7 +225,8 @@ var Detail = (function () {
         var label = it.name + ' · S' + seasons[sIdx] + ' E' + (e.episode_num || eIdx + 1);
         var nx = nextOf(seasons, eps, sIdx, eIdx);
         Player.start({ k: 'ep', url: U.epUrl(e.id, e.container_extension), name: label, sub: e.title || '', pos: res ? res.pos : 0,
-            next: nx ? function () { startEp(it, seasons, eps, nx.s, nx.e, moved); } : null, nextName: nx ? nx.name : '',
+            next: nx ? function () { startEp(it, seasons, eps, nx.s, nx.e, moved); } : null, nextName: nx ? nx.name : '', nextInfo: nx ? nx.info : null,
+            epctx: { ser: { id: it.id, name: it.name, img: it.img, tmdb: it.tmdb || '' }, seasons: seasons, eps: eps, s: sIdx, e: eIdx, play: function (s2, e2) { startEp(it, seasons, eps, s2, e2, moved); } },
             osub: it.tmdb ? { k: 'ep', stmdb: it.tmdb, season: +seasons[sIdx], episode: +(e.episode_num || eIdx + 1) } : null,
             resumeItem: { k: 'ep', id: e.id, name: label, img: it.img, ext: e.container_extension, series: { id: it.id, name: it.name, img: it.img, tmdb: it.tmdb || '' } } });
     }
@@ -343,7 +355,8 @@ var Detail = (function () {
                     var stm = String((d.info || {}).tmdb || (d.info || {}).tmdb_id || '').replace(/\D/g, ''), ep0 = eps2[ss[i]][j];
                     if (stm) Player.setSubsItem(item, { k: 'ep', stmdb: stm, season: +ss[i], episode: +(ep0.episode_num || j + 1) });
                     var nx = nextOf(ss, eps2, i, j), ser = { id: r.series.id, name: r.series.name, img: r.series.img, tmdb: stm };
-                    if (nx) Player.setNext(item, function () { startEp(ser, ss, eps2, nx.s, nx.e); }, nx.name);
+                    if (nx) Player.setNext(item, function () { startEp(ser, ss, eps2, nx.s, nx.e); }, nx.name, nx.info);
+                    Player.setEps(item, { ser: ser, seasons: ss, eps: eps2, s: i, e: j, play: function (s2, e2) { startEp(ser, ss, eps2, s2, e2); } });
                     return;
                 }
             });
@@ -353,5 +366,50 @@ var Detail = (function () {
         el = U.$('detail');
         el.innerHTML = '<div class="back" id="dBack" style="background-size:cover;background-position:center top"></div><div class="shade"></div><div class="shade2"></div><div class="abs" id="dBody" style="left:0;top:0;width:1920px;height:1080px"></div>';
     }
-    return { init: init, key: key, show: load, focus: function () { draw(); }, refresh: function () { draw(); }, playResume: playResume };
+    // plays one episode of a series from outside the page (the long-press menu): chained to the next one like any other
+    function playEpisode(ser, seasons, eps, sIdx, eIdx) { startEp(ser, seasons, eps, sIdx, eIdx); }
+    return { init: init, key: key, show: load, focus: function () { draw(); }, refresh: function () { draw(); }, playResume: playResume, playEpisode: playEpisode };
+})();
+
+// Long press on a series tile (Home rows, Series page, Continue watching, My List): where you are in the show, resume,
+// open it, jump to any episode through season then episode chips, My List. `extra` adds the caller's own entries (Move, Hide row).
+var SeriesMenu = (function () {
+    'use strict';
+    function parseSE(name) { var m = /S(\d+)\s*E(\d+)/i.exec(name || ''); return m ? { s: m[1], e: m[2] } : null; }
+    function lastResume(sid) {
+        var c = U.continueList();
+        for (var i = 0; i < c.length; i++) if (c[i].k === 'ep' && c[i].series && String(c[i].series.id) === String(sid)) return c[i];
+        return null;
+    }
+    function chips(show, seasons, eps, si, ei, tmdb, head) {
+        var sc = seasons.map(function (sn, i) { return { label: 'S' + sn, on: i === si, run: function () { chips(show, seasons, eps, i, 0, tmdb, head); } }; });
+        var list = eps[seasons[si]] || [];
+        var ec = list.map(function (e, i) { return { label: 'E' + (e.episode_num || i + 1), on: i === ei, run: function () { Detail.playEpisode({ id: show.id, name: show.name, img: show.img, tmdb: tmdb }, seasons, eps, si, i); } }; });
+        Menu.open(show.name, [{ label: 'Season', chips: sc, ci: si }, { label: 'Episode', chips: ec, ci: ei }], head, 1);
+    }
+    function goTo(show, r, head) {
+        U.toast('Loading episodes\u2026');
+        U.api({ action: 'get_series_info', series_id: show.id }, function (err, d) {
+            if (err || !d || !d.episodes) { U.toast('Could not load the episodes'); return; }
+            var eps = d.episodes, seasons = []; for (var s in eps) seasons.push(s);
+            seasons.sort(function (a, b) { return (+a) - (+b); });
+            if (!seasons.length) { U.toast('No episodes listed'); return; }
+            var tmdb = String((d.info || {}).tmdb || (d.info || {}).tmdb_id || '').replace(/\D/g, ''), si = 0, ei = 0, se = r ? parseSE(r.name) : null;
+            if (se) for (var i = 0; i < seasons.length; i++) if (String(seasons[i]) === String(se.s)) { si = i; var l = eps[seasons[i]] || []; for (var j = 0; j < l.length; j++) if (String(l[j].id) === String(r.id)) ei = j; }
+            chips(show, seasons, eps, si, ei, tmdb, head);
+        });
+    }
+    function open(it, extra, after) {
+        var ser = it.k === 'ep' ? it.series : it;
+        if (!ser || ser.id == null) return false;
+        var show = { k: 'series', id: ser.id, name: ser.name, img: ser.img || '' }, r = lastResume(show.id), se = r ? parseSE(r.name) : null, acts = [];
+        var head = U.cleanTitle(show.name) + (se ? ' \u00b7 S' + se.s + ' E' + se.e + (r.pos ? ' at ' + U.fmtTime(r.pos) : '') : '');
+        if (r) acts.push({ label: 'Resume' + (se ? ' E' + se.e : ''), icon: '&#9654;', note: r.dur ? U.fmtTime(r.pos) + ' of ' + U.fmtTime(r.dur) : '', run: function () { Detail.playResume(r); } });
+        acts.push({ label: 'Open the show', note: 'seasons and episodes', run: function () { App.show('detail', show, true); } });
+        acts.push({ label: 'Go to episode\u2026', icon: '&#8250;', run: function () { goTo(show, r, head); } });
+        acts.push({ label: U.inList(show) ? 'Remove from My List' : 'Add to My List', icon: U.inList(show) ? '&#8854;' : '&#43;', red: U.inList(show), run: function () { U.toggleList(show); if (after) after(); } });
+        Menu.open(show.name, acts.concat(extra || []), head);
+        return true;
+    }
+    return { open: open };
 })();

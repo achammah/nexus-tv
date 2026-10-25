@@ -5,7 +5,7 @@
 set -o pipefail
 export PATH="$HOME/tizen-studio/tools:$HOME/tizen-studio/tools/ide/bin:$PATH"
 APP="$(cd "$(dirname "$0")/.." && pwd)"; STAGE="$APP/.cache/stage"
-if [ "$1" = "tv2" ]; then TV=${2:?usage: package.sh tv2 <ip>}; KEY=~/.nexus-secrets/tvapp-iptv-tv2.key; else TV=${TV:-<your-frame-ip>}; KEY=; fi
+if [ "$1" = "tv2" ]; then TV=${2:?usage: package.sh tv2 <ip>}; KEY=~/.nexus-secrets/tvapp-iptv-tv2.key; else TV=<tv-ip>; KEY=; fi
 SERIAL=$TV:26101
 rm -rf "$STAGE" && mkdir -p "$STAGE" || exit 1
 rsync -a --exclude .git --exclude .cache --exclude tools --exclude '*.wgt' --exclude .gitignore "$APP/" "$STAGE/" || exit 1

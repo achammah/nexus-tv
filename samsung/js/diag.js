@@ -1,6 +1,6 @@
 // Temporary diagnostics: sends playback events to the owner's Mac on the LAN.
 (function () {
-    var SINK = 'http://__MAC__:8815/log';
+    var SINK = 'http://<tv-ip>:8815/log';
     window.diag = function (o) {
         try {
             o.t = new Date().toISOString();

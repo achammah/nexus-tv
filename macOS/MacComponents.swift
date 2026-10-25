@@ -62,6 +62,7 @@ struct PosterTile: View {
     @EnvironmentObject var user: UserStore
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var nav: MacNav
+    @EnvironmentObject var catalog: Catalog
     @State private var hover = false
     var body: some View {
         Button { nav.open(item) } label: {
@@ -83,8 +84,12 @@ struct PosterTile: View {
             }
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
-        .contextMenu { TileMenu.poster(item, row: row, user: user, settings: settings, nav: nav) }
+        .onHover { h in
+            withAnimation(.easeOut(duration: 0.12)) { hover = h }
+            // the right-click menu of a show lists its seasons and episodes: read them while the pointer is on the tile
+            if h && item.kind == .series { SeriesGuide.shared.prefetch(item, catalog: catalog) }
+        }
+        .contextMenu { TileMenu.poster(item, row: row, user: user, settings: settings, nav: nav, catalog: catalog) }
         .accessibilityIdentifier("tile:" + item.key)
         .accessibilityLabel(item.name)
     }
@@ -200,16 +205,25 @@ struct TileRowRef { let id: String; let keys: [String] }
 /// Right-click menus on tiles: open or play, save or remove, move left or right, hide the row.
 @MainActor
 enum TileMenu {
-    @ViewBuilder static func poster(_ it: MediaItem, row: TileRowRef?, user: UserStore, settings: Settings, nav: MacNav) -> some View {
-        Button { nav.open(it) } label: { Label("Open", systemImage: "info.circle") }
-        listButton(it, user: user)
+    @ViewBuilder static func poster(_ it: MediaItem, row: TileRowRef?, user: UserStore, settings: Settings, nav: MacNav, catalog: Catalog) -> some View {
+        if it.kind == .series {
+            // a show: where you stopped, the show page, any episode, My List (rule 7)
+            SeriesMenu(series: it, user: user, nav: nav, catalog: catalog)
+        } else {
+            Button { nav.open(it) } label: { Label("Open", systemImage: "info.circle") }
+            listButton(it, user: user)
+        }
         if let row { Divider(); moves(row.id, it.key, keys: row.keys, settings: settings) }
     }
 
-    @ViewBuilder static func resume(_ r: ResumePoint, row: String, keys: [String], user: UserStore, settings: Settings, nav: MacNav) -> some View {
-        Button { Player(nav: nav).play(r.item, startMs: r.posMs) } label: { Label("Resume", systemImage: "play.fill") }
-        Button { Player(nav: nav).play(r.item) } label: { Label("Play from the start", systemImage: "backward.end.fill") }
-        if r.item.kind != .live { listButton(r.item, user: user) }
+    @ViewBuilder static func resume(_ r: ResumePoint, row: String, keys: [String], user: UserStore, settings: Settings, nav: MacNav, catalog: Catalog) -> some View {
+        if r.item.kind == .episode, let sid = r.item.seriesId {
+            SeriesMenu(series: MediaItem(kind: .series, id: sid, name: r.item.seriesName ?? "", img: r.item.img), user: user, nav: nav, catalog: catalog)
+        } else {
+            Button { Player(nav: nav).play(r.item, startMs: r.posMs) } label: { Label("Resume", systemImage: "play.fill") }
+            Button { Player(nav: nav).play(r.item) } label: { Label("Play from the start", systemImage: "backward.end.fill") }
+            if r.item.kind != .live { listButton(r.item, user: user) }
+        }
         Divider()
         Button(role: .destructive) { user.removeResume(r) } label: { Label("Remove from Continue watching", systemImage: "xmark.circle") }
         moves(row, r.item.key, keys: keys, settings: settings)
@@ -242,5 +256,77 @@ enum TileMenu {
         Button { withAnimation { settings.moveRow(row, by: -1) } } label: { Label("Move row up", systemImage: "arrow.up") }
         Button { withAnimation { settings.moveRow(row, by: 1) } } label: { Label("Move row down", systemImage: "arrow.down") }
         Button(role: .destructive) { withAnimation { settings.hideRow(row) } } label: { Label("Hide this row", systemImage: "eye.slash") }
+    }
+}
+
+// MARK: - Right-click on a show (rule 7)
+
+/// The seasons and episodes of the shows the pointer visited, so a right-click menu can list them.
+@MainActor
+final class SeriesGuide: ObservableObject {
+    static let shared = SeriesGuide()
+    @Published private(set) var details: [String: Details] = [:]
+    private var loading: Set<String> = []
+    func prefetch(_ series: MediaItem, catalog: Catalog) {
+        guard details[series.id] == nil, loading.insert(series.id).inserted else { return }
+        Task {
+            if let d = await catalog.details(MediaItem(kind: .series, id: series.id, name: series.name)) { details[series.id] = d }
+            loading.remove(series.id)
+        }
+    }
+}
+
+/// "Show · S1 E3 at 10:34", then Resume E3 · Open the show · Go to episode… (seasons, then episodes) · My List.
+struct SeriesMenu: View {
+    let series: MediaItem
+    let user: UserStore
+    let nav: MacNav
+    let catalog: Catalog
+    @ObservedObject private var guide = SeriesGuide.shared
+
+    var body: some View {
+        let last = user.lastEpisode(ofSeries: series.id)
+        let d = guide.details[series.id]
+        let title = Clean.display(series.name.isEmpty ? (d?.name ?? "") : series.name)
+        if let last, let se = PlayerFormat.seasonEpisode(last.item.name) {
+            Text("\(title) · S\(se.season) E\(se.episode)" + (last.posMs > 0 ? " at " + PlayerFormat.clock(last.posMs / 1000) : ""))
+            Button { play(last.item, at: last.posMs, d: d) } label: { Label("Resume " + (se.season == "1" ? "E\(se.episode)" : "S\(se.season) E\(se.episode)"), systemImage: "play.fill") }
+        } else {
+            Text(title)
+        }
+        Button { nav.open(series) } label: { Label("Open the show", systemImage: "info.circle") }
+        if let d, !d.seasons.isEmpty {
+            Menu {
+                ForEach(d.seasons, id: \.self) { s in
+                    Menu("Season \(s)") {
+                        ForEach(d.episodes[s] ?? [], id: \.id) { e in
+                            Button("E\(e.num) · " + (e.title.isEmpty ? "Episode \(e.num)" : e.title)) { play(episodeItem(e, s, d, title), at: user.resumePoint(episodeItem(e, s, d, title))?.posMs ?? 0, d: d) }
+                        }
+                    }
+                }
+            } label: { Label("Go to episode…", systemImage: "list.bullet") }
+        } else {
+            Button { SeriesGuide.shared.prefetch(series, catalog: catalog) } label: { Label("Go to episode… (loading)", systemImage: "list.bullet") }
+        }
+        if user.inList(series) {
+            Button { user.toggle(series) } label: { Label("Remove from My List", systemImage: "minus.circle") }
+        } else {
+            Button { user.toggle(series) } label: { Label("Add to My List", systemImage: "plus") }
+        }
+    }
+
+    private func episodeItem(_ e: Episode, _ s: String, _ d: Details, _ title: String) -> MediaItem {
+        MediaItem(kind: .episode, id: e.id, name: "\(title) · S\(s) E\(e.num)", img: e.still.isEmpty ? d.poster : e.still, ext: e.ext, sub: e.title,
+                  seriesId: series.id, seriesName: title)
+    }
+    /// Plays an episode; the ones after it follow (the player finds them itself when the show is not loaded yet).
+    private func play(_ it: MediaItem, at ms: Int, d: Details?) {
+        var next: [MediaItem] = []
+        if let d {
+            let title = Clean.display(series.name.isEmpty ? d.name : series.name)
+            let all = d.seasons.flatMap { s in (d.episodes[s] ?? []).map { episodeItem($0, s, d, title) } }
+            if let i = all.firstIndex(where: { $0.id == it.id }) { next = Array(all.dropFirst(i + 1)) }
+        }
+        Player(nav: nav).play(it, startMs: ms, next: next, picture: d?.poster ?? "")
     }
 }
